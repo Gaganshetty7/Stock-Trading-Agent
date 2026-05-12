@@ -11,3 +11,7 @@ wheels/
 
 # Environment Variables
 .env
+
+# Logs and Output
+logs/
+outputs/

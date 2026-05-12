@@ -12,7 +12,7 @@ async def test_broad_fetch(max_age_hours: int = 48) -> None:
     run_start_ts = time.perf_counter()
 
     init_tools()
-    fetch_tool = get_tool("fetch_rss")
+    fetch_tool = get_tool("fetch_broad_market_rss")
 
     print(f"[TEST2] Running broad RSS fetch with max_age_hours={max_age_hours}")
     articles = await fetch_tool(max_age_hours=max_age_hours)
