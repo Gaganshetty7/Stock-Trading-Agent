@@ -1,0 +1,231 @@
+2026-05-11 16:50:57,571 | broad_market_rss_fetcher | INFO | ============================================================
+2026-05-11 16:50:57,583 | broad_market_rss_fetcher | INFO | Starting broad market RSS sweep
+2026-05-11 16:50:57,584 | broad_market_rss_fetcher | INFO |   Total queries:   215
+2026-05-11 16:50:57,584 | broad_market_rss_fetcher | INFO |   Sweepers:        20
+2026-05-11 16:50:57,585 | broad_market_rss_fetcher | INFO |   Sector x Event:  180
+2026-05-11 16:50:57,586 | broad_market_rss_fetcher | INFO |   High signal:     15
+2026-05-11 16:50:57,587 | broad_market_rss_fetcher | INFO |   Max per query:   100
+2026-05-11 16:50:57,587 | broad_market_rss_fetcher | INFO |   Max age:         48h
+2026-05-11 16:50:57,588 | broad_market_rss_fetcher | INFO |   Concurrency:     8
+2026-05-11 16:50:57,589 | broad_market_rss_fetcher | INFO | ============================================================
+2026-05-11 16:50:58,158 | broad_market_rss_fetcher | DEBUG | Query 'India stock market movers gainers losers' → 16 articles
+2026-05-11 16:50:58,177 | broad_market_rss_fetcher | DEBUG | Query 'India FII DII investment today' → 23 articles
+2026-05-11 16:50:58,241 | broad_market_rss_fetcher | DEBUG | Query 'NSE BSE India stock market today' → 39 articles
+2026-05-11 16:50:58,491 | broad_market_rss_fetcher | DEBUG | Query 'India quarterly results earnings today' → 32 articles
+2026-05-11 16:50:58,519 | broad_market_rss_fetcher | DEBUG | Query 'NSE BSE share price today' → 38 articles
+2026-05-11 16:50:58,590 | broad_market_rss_fetcher | DEBUG | Query 'India bulk deal block deal today' → 5 articles
+2026-05-11 16:50:58,655 | broad_market_rss_fetcher | DEBUG | Query 'SEBI action order India today' → 11 articles
+2026-05-11 16:50:58,687 | broad_market_rss_fetcher | DEBUG | Query 'India IPO listing NSE BSE today' → 46 articles
+2026-05-11 16:50:58,710 | broad_market_rss_fetcher | DEBUG | Query 'India corporate results profit loss' → 37 articles
+2026-05-11 16:50:58,725 | broad_market_rss_fetcher | DEBUG | Query 'RBI policy decision India today' → 22 articles
+2026-05-11 16:50:58,798 | broad_market_rss_fetcher | DEBUG | Query 'India stock market news today' → 100 articles
+2026-05-11 16:50:58,965 | broad_market_rss_fetcher | DEBUG | Query 'India 52 week high low NSE' → 31 articles
+2026-05-11 16:50:59,101 | broad_market_rss_fetcher | DEBUG | Query 'India market rally crash today' → 39 articles
+2026-05-11 16:50:59,111 | broad_market_rss_fetcher | DEBUG | Query 'India promoter stake sale pledge' → 6 articles
+2026-05-11 16:50:59,173 | broad_market_rss_fetcher | DEBUG | Query 'India upper circuit lower circuit stock' → 31 articles
+2026-05-11 16:50:59,184 | broad_market_rss_fetcher | DEBUG | Query 'India board meeting AGM EGM' → 2 articles
+2026-05-11 16:50:59,244 | broad_market_rss_fetcher | DEBUG | Query 'India company guidance outlook forecast' → 9 articles
+2026-05-11 16:50:59,287 | broad_market_rss_fetcher | DEBUG | Query 'India mutual fund investment news' → 43 articles
+2026-05-11 16:50:59,311 | broad_market_rss_fetcher | DEBUG | Query 'India stock analyst target price' → 37 articles
+2026-05-11 16:50:59,576 | broad_market_rss_fetcher | DEBUG | Query 'India banking deal acquisition merger' → 6 articles
+2026-05-11 16:50:59,579 | broad_market_rss_fetcher | DEBUG | Query 'India banking SEBI action penalty' → 0 articles
+2026-05-11 16:50:59,583 | broad_market_rss_fetcher | DEBUG | Query 'India banking fundraise QIP stake' → 0 articles
+2026-05-11 16:50:59,589 | broad_market_rss_fetcher | DEBUG | Query 'India banking dividend buyback bonus' → 3 articles
+2026-05-11 16:50:59,649 | broad_market_rss_fetcher | DEBUG | Query 'India banking results earnings profit loss' → 41 articles
+2026-05-11 16:50:59,677 | broad_market_rss_fetcher | DEBUG | Query 'India banking order contract win' → 22 articles
+2026-05-11 16:50:59,791 | broad_market_rss_fetcher | DEBUG | Query 'India rights issue QIP preferential allotment' → 3 articles
+2026-05-11 16:50:59,804 | broad_market_rss_fetcher | DEBUG | Query 'India banking expansion capacity plant' → 12 articles
+2026-05-11 16:50:59,966 | broad_market_rss_fetcher | DEBUG | Query 'India banking FDA approval recall' → 0 articles
+2026-05-11 16:51:00,026 | broad_market_rss_fetcher | DEBUG | Query 'India banking guidance outlook forecast' → 3 articles
+2026-05-11 16:51:00,033 | broad_market_rss_fetcher | DEBUG | Query 'India banking partnership agreement MOU' → 6 articles
+2026-05-11 16:51:00,114 | broad_market_rss_fetcher | DEBUG | Query 'India banking upgrade downgrade target price' → 14 articles
+2026-05-11 16:51:00,124 | broad_market_rss_fetcher | DEBUG | Query 'India banking bulk deal block deal' → 3 articles
+2026-05-11 16:51:00,190 | broad_market_rss_fetcher | DEBUG | Query 'India banking listing IPO' → 57 articles
+2026-05-11 16:51:00,194 | broad_market_rss_fetcher | DEBUG | Query 'India banking fraud scam default' → 1 articles
+2026-05-11 16:51:00,332 | broad_market_rss_fetcher | DEBUG | Query 'India banking RBI regulation policy' → 32 articles
+2026-05-11 16:51:00,442 | broad_market_rss_fetcher | DEBUG | Query 'India pharma dividend buyback bonus' → 2 articles
+2026-05-11 16:51:00,448 | broad_market_rss_fetcher | DEBUG | Query 'India pharma deal acquisition merger' → 5 articles
+2026-05-11 16:51:00,462 | broad_market_rss_fetcher | DEBUG | Query 'India pharma SEBI action penalty' → 1 articles
+2026-05-11 16:51:00,512 | broad_market_rss_fetcher | DEBUG | Query 'India pharma results earnings profit loss' → 46 articles
+2026-05-11 16:51:00,525 | broad_market_rss_fetcher | DEBUG | Query 'India pharma fundraise QIP stake' → 0 articles
+2026-05-11 16:51:00,622 | broad_market_rss_fetcher | DEBUG | Query 'India pharma expansion capacity plant' → 10 articles
+2026-05-11 16:51:00,627 | broad_market_rss_fetcher | DEBUG | Query 'India pharma order contract win' → 6 articles
+2026-05-11 16:51:00,753 | broad_market_rss_fetcher | DEBUG | Query 'India pharma FDA approval recall' → 0 articles
+2026-05-11 16:51:00,848 | broad_market_rss_fetcher | DEBUG | Query 'India pharma partnership agreement MOU' → 4 articles
+2026-05-11 16:51:00,852 | broad_market_rss_fetcher | DEBUG | Query 'India pharma guidance outlook forecast' → 2 articles
+2026-05-11 16:51:00,925 | broad_market_rss_fetcher | DEBUG | Query 'India pharma listing IPO' → 18 articles
+2026-05-11 16:51:00,929 | broad_market_rss_fetcher | DEBUG | Query 'India pharma upgrade downgrade target price' → 3 articles
+2026-05-11 16:51:00,959 | broad_market_rss_fetcher | DEBUG | Query 'India pharma bulk deal block deal' → 3 articles
+2026-05-11 16:51:01,004 | broad_market_rss_fetcher | DEBUG | Query 'India pharma RBI regulation policy' → 6 articles
+2026-05-11 16:51:01,010 | broad_market_rss_fetcher | DEBUG | Query 'India pharma fraud scam default' → 0 articles
+2026-05-11 16:51:01,296 | broad_market_rss_fetcher | DEBUG | Query 'India IT deal acquisition merger' → 15 articles
+2026-05-11 16:51:01,329 | broad_market_rss_fetcher | DEBUG | Query 'India IT order contract win' → 34 articles
+2026-05-11 16:51:01,360 | broad_market_rss_fetcher | DEBUG | Query 'India IT results earnings profit loss' → 50 articles
+2026-05-11 16:51:01,363 | broad_market_rss_fetcher | DEBUG | Query 'India IT dividend buyback bonus' → 2 articles
+2026-05-11 16:51:01,365 | broad_market_rss_fetcher | DEBUG | Query 'India IT fundraise QIP stake' → 0 articles
+2026-05-11 16:51:01,368 | broad_market_rss_fetcher | DEBUG | Query 'India IT SEBI action penalty' → 1 articles
+2026-05-11 16:51:01,503 | broad_market_rss_fetcher | DEBUG | Query 'India IT guidance outlook forecast' → 6 articles
+2026-05-11 16:51:01,528 | broad_market_rss_fetcher | DEBUG | Query 'India IT expansion capacity plant' → 43 articles
+2026-05-11 16:51:01,731 | broad_market_rss_fetcher | DEBUG | Query 'India IT FDA approval recall' → 0 articles
+2026-05-11 16:51:01,752 | broad_market_rss_fetcher | DEBUG | Query 'India IT partnership agreement MOU' → 33 articles
+2026-05-11 16:51:01,772 | broad_market_rss_fetcher | DEBUG | Query 'India IT bulk deal block deal' → 5 articles
+2026-05-11 16:51:01,827 | broad_market_rss_fetcher | DEBUG | Query 'India IT RBI regulation policy' → 32 articles
+2026-05-11 16:51:01,843 | broad_market_rss_fetcher | DEBUG | Query 'India IT upgrade downgrade target price' → 25 articles
+2026-05-11 16:51:01,901 | broad_market_rss_fetcher | DEBUG | Query 'India IT listing IPO' → 46 articles
+2026-05-11 16:51:01,904 | broad_market_rss_fetcher | DEBUG | Query 'India IT fraud scam default' → 0 articles
+2026-05-11 16:51:02,063 | broad_market_rss_fetcher | DEBUG | Query 'India infrastructure results earnings profit loss' → 52 articles
+2026-05-11 16:51:02,118 | broad_market_rss_fetcher | DEBUG | Query 'India infrastructure dividend buyback bonus' → 0 articles
+2026-05-11 16:51:02,127 | broad_market_rss_fetcher | DEBUG | Query 'India infrastructure SEBI action penalty' → 1 articles
+2026-05-11 16:51:02,155 | broad_market_rss_fetcher | DEBUG | Query 'India infrastructure order contract win' → 20 articles
+2026-05-11 16:51:02,161 | broad_market_rss_fetcher | DEBUG | Query 'India infrastructure deal acquisition merger' → 2 articles
+2026-05-11 16:51:02,163 | broad_market_rss_fetcher | DEBUG | Query 'India infrastructure fundraise QIP stake' → 0 articles
+2026-05-11 16:51:02,304 | broad_market_rss_fetcher | DEBUG | Query 'India infrastructure guidance outlook forecast' → 1 articles
+2026-05-11 16:51:02,425 | broad_market_rss_fetcher | DEBUG | Query 'India infrastructure FDA approval recall' → 0 articles
+2026-05-11 16:51:02,463 | broad_market_rss_fetcher | DEBUG | Query 'India infrastructure expansion capacity plant' → 52 articles
+2026-05-11 16:51:02,469 | broad_market_rss_fetcher | DEBUG | Query 'India infrastructure partnership agreement MOU' → 6 articles
+2026-05-11 16:51:02,504 | broad_market_rss_fetcher | DEBUG | Query 'India infrastructure bulk deal block deal' → 0 articles
+2026-05-11 16:51:02,559 | broad_market_rss_fetcher | DEBUG | Query 'India infrastructure upgrade downgrade target price' → 5 articles
+2026-05-11 16:51:02,586 | broad_market_rss_fetcher | DEBUG | Query 'India infrastructure listing IPO' → 34 articles
+2026-05-11 16:51:02,594 | broad_market_rss_fetcher | DEBUG | Query 'India infrastructure RBI regulation policy' → 9 articles
+2026-05-11 16:51:02,614 | broad_market_rss_fetcher | DEBUG | Query 'India infrastructure fraud scam default' → 0 articles
+2026-05-11 16:51:02,836 | broad_market_rss_fetcher | DEBUG | Query 'India energy SEBI action penalty' → 0 articles
+2026-05-11 16:51:02,859 | broad_market_rss_fetcher | DEBUG | Query 'India energy fundraise QIP stake' → 0 articles
+2026-05-11 16:51:02,906 | broad_market_rss_fetcher | DEBUG | Query 'India energy order contract win' → 14 articles
+2026-05-11 16:51:02,918 | broad_market_rss_fetcher | DEBUG | Query 'India energy deal acquisition merger' → 4 articles
+2026-05-11 16:51:02,924 | broad_market_rss_fetcher | DEBUG | Query 'India energy dividend buyback bonus' → 1 articles
+2026-05-11 16:51:02,983 | broad_market_rss_fetcher | DEBUG | Query 'India energy results earnings profit loss' → 40 articles
+2026-05-11 16:51:03,070 | broad_market_rss_fetcher | DEBUG | Query 'India energy guidance outlook forecast' → 3 articles
+2026-05-11 16:51:03,111 | broad_market_rss_fetcher | DEBUG | Query 'India energy expansion capacity plant' → 48 articles
+2026-05-11 16:51:03,229 | broad_market_rss_fetcher | DEBUG | Query 'India energy FDA approval recall' → 0 articles
+2026-05-11 16:51:03,348 | broad_market_rss_fetcher | DEBUG | Query 'India energy bulk deal block deal' → 4 articles
+2026-05-11 16:51:03,375 | broad_market_rss_fetcher | DEBUG | Query 'India energy partnership agreement MOU' → 11 articles
+2026-05-11 16:51:03,389 | broad_market_rss_fetcher | DEBUG | Query 'India energy listing IPO' → 23 articles
+2026-05-11 16:51:03,392 | broad_market_rss_fetcher | DEBUG | Query 'India energy fraud scam default' → 0 articles
+2026-05-11 16:51:03,422 | broad_market_rss_fetcher | DEBUG | Query 'India energy upgrade downgrade target price' → 13 articles
+2026-05-11 16:51:03,548 | broad_market_rss_fetcher | DEBUG | Query 'India energy RBI regulation policy' → 22 articles
+2026-05-11 16:51:03,677 | broad_market_rss_fetcher | DEBUG | Query 'India FMCG results earnings profit loss' → 36 articles
+2026-05-11 16:51:03,684 | broad_market_rss_fetcher | DEBUG | Query 'India FMCG order contract win' → 2 articles
+2026-05-11 16:51:03,688 | broad_market_rss_fetcher | DEBUG | Query 'India FMCG deal acquisition merger' → 1 articles
+2026-05-11 16:51:03,704 | broad_market_rss_fetcher | DEBUG | Query 'India FMCG dividend buyback bonus' → 0 articles
+2026-05-11 16:51:03,730 | broad_market_rss_fetcher | DEBUG | Query 'India FMCG SEBI action penalty' → 0 articles
+2026-05-11 16:51:03,733 | broad_market_rss_fetcher | DEBUG | Query 'India FMCG fundraise QIP stake' → 0 articles
+2026-05-11 16:51:03,808 | broad_market_rss_fetcher | DEBUG | Query 'India FMCG expansion capacity plant' → 2 articles
+2026-05-11 16:51:03,932 | broad_market_rss_fetcher | DEBUG | Query 'India FMCG FDA approval recall' → 0 articles
+2026-05-11 16:51:03,993 | broad_market_rss_fetcher | DEBUG | Query 'India FMCG partnership agreement MOU' → 0 articles
+2026-05-11 16:51:03,999 | broad_market_rss_fetcher | DEBUG | Query 'India FMCG guidance outlook forecast' → 1 articles
+2026-05-11 16:51:04,054 | broad_market_rss_fetcher | DEBUG | Query 'India FMCG listing IPO' → 3 articles
+2026-05-11 16:51:04,063 | broad_market_rss_fetcher | DEBUG | Query 'India FMCG fraud scam default' → 0 articles
+2026-05-11 16:51:04,069 | broad_market_rss_fetcher | DEBUG | Query 'India FMCG RBI regulation policy' → 1 articles
+2026-05-11 16:51:04,071 | broad_market_rss_fetcher | DEBUG | Query 'India FMCG bulk deal block deal' → 0 articles
+2026-05-11 16:51:04,097 | broad_market_rss_fetcher | DEBUG | Query 'India FMCG upgrade downgrade target price' → 0 articles
+2026-05-11 16:51:04,379 | broad_market_rss_fetcher | DEBUG | Query 'India metals SEBI action penalty' → 0 articles
+2026-05-11 16:51:04,390 | broad_market_rss_fetcher | DEBUG | Query 'India metals fundraise QIP stake' → 0 articles
+2026-05-11 16:51:04,393 | broad_market_rss_fetcher | DEBUG | Query 'India metals deal acquisition merger' → 0 articles
+2026-05-11 16:51:04,430 | broad_market_rss_fetcher | DEBUG | Query 'India metals results earnings profit loss' → 15 articles
+2026-05-11 16:51:04,448 | broad_market_rss_fetcher | DEBUG | Query 'India metals dividend buyback bonus' → 1 articles
+2026-05-11 16:51:04,457 | broad_market_rss_fetcher | DEBUG | Query 'India metals order contract win' → 5 articles
+2026-05-11 16:51:04,484 | broad_market_rss_fetcher | DEBUG | Query 'India metals expansion capacity plant' → 21 articles
+2026-05-11 16:51:04,497 | broad_market_rss_fetcher | DEBUG | Query 'India metals guidance outlook forecast' → 1 articles
+2026-05-11 16:51:04,679 | broad_market_rss_fetcher | DEBUG | Query 'India metals FDA approval recall' → 0 articles
+2026-05-11 16:51:04,711 | broad_market_rss_fetcher | DEBUG | Query 'India metals partnership agreement MOU' → 0 articles
+2026-05-11 16:51:04,768 | broad_market_rss_fetcher | DEBUG | Query 'India metals listing IPO' → 12 articles
+2026-05-11 16:51:04,770 | broad_market_rss_fetcher | DEBUG | Query 'India metals RBI regulation policy' → 0 articles
+2026-05-11 16:51:04,824 | broad_market_rss_fetcher | DEBUG | Query 'India metals fraud scam default' → 0 articles
+2026-05-11 16:51:04,881 | broad_market_rss_fetcher | DEBUG | Query 'India metals bulk deal block deal' → 0 articles
+2026-05-11 16:51:04,890 | broad_market_rss_fetcher | DEBUG | Query 'India metals upgrade downgrade target price' → 1 articles
+2026-05-11 16:51:04,982 | broad_market_rss_fetcher | DEBUG | Query 'India auto results earnings profit loss' → 38 articles
+2026-05-11 16:51:05,117 | broad_market_rss_fetcher | DEBUG | Query 'India auto SEBI action penalty' → 2 articles
+2026-05-11 16:51:05,123 | broad_market_rss_fetcher | DEBUG | Query 'India auto order contract win' → 1 articles
+2026-05-11 16:51:05,142 | broad_market_rss_fetcher | DEBUG | Query 'India auto deal acquisition merger' → 3 articles
+2026-05-11 16:51:05,180 | broad_market_rss_fetcher | DEBUG | Query 'India auto fundraise QIP stake' → 0 articles
+2026-05-11 16:51:05,243 | broad_market_rss_fetcher | DEBUG | Query 'India auto dividend buyback bonus' → 1 articles
+2026-05-11 16:51:05,347 | broad_market_rss_fetcher | DEBUG | Query 'India auto expansion capacity plant' → 40 articles
+2026-05-11 16:51:05,350 | broad_market_rss_fetcher | DEBUG | Query 'India auto guidance outlook forecast' → 0 articles
+2026-05-11 16:51:05,352 | broad_market_rss_fetcher | DEBUG | Query 'India auto FDA approval recall' → 0 articles
+2026-05-11 16:51:05,499 | broad_market_rss_fetcher | DEBUG | Query 'India auto partnership agreement MOU' → 4 articles
+2026-05-11 16:51:05,563 | broad_market_rss_fetcher | DEBUG | Query 'India auto listing IPO' → 27 articles
+2026-05-11 16:51:05,567 | broad_market_rss_fetcher | DEBUG | Query 'India auto bulk deal block deal' → 1 articles
+2026-05-11 16:51:05,621 | broad_market_rss_fetcher | DEBUG | Query 'India auto upgrade downgrade target price' → 3 articles
+2026-05-11 16:51:05,717 | broad_market_rss_fetcher | DEBUG | Query 'India auto RBI regulation policy' → 42 articles
+2026-05-11 16:51:05,719 | broad_market_rss_fetcher | DEBUG | Query 'India auto fraud scam default' → 0 articles
+2026-05-11 16:51:05,766 | broad_market_rss_fetcher | DEBUG | Query 'India telecom order contract win' → 1 articles
+2026-05-11 16:51:05,830 | broad_market_rss_fetcher | DEBUG | Query 'India telecom dividend buyback bonus' → 0 articles
+2026-05-11 16:51:05,834 | broad_market_rss_fetcher | DEBUG | Query 'India telecom SEBI action penalty' → 0 articles
+2026-05-11 16:51:05,890 | broad_market_rss_fetcher | DEBUG | Query 'India telecom deal acquisition merger' → 1 articles
+2026-05-11 16:51:06,023 | broad_market_rss_fetcher | DEBUG | Query 'India telecom expansion capacity plant' → 2 articles
+2026-05-11 16:51:06,025 | broad_market_rss_fetcher | DEBUG | Query 'India telecom fundraise QIP stake' → 0 articles
+2026-05-11 16:51:06,045 | broad_market_rss_fetcher | DEBUG | Query 'India telecom guidance outlook forecast' → 0 articles
+2026-05-11 16:51:06,222 | broad_market_rss_fetcher | DEBUG | Query 'India telecom partnership agreement MOU' → 1 articles
+2026-05-11 16:51:06,276 | broad_market_rss_fetcher | DEBUG | Query 'India telecom FDA approval recall' → 0 articles
+2026-05-11 16:51:06,343 | broad_market_rss_fetcher | DEBUG | Query 'India telecom results earnings profit loss' → 13 articles
+2026-05-11 16:51:06,347 | broad_market_rss_fetcher | DEBUG | Query 'India telecom upgrade downgrade target price' → 1 articles
+2026-05-11 16:51:06,349 | broad_market_rss_fetcher | DEBUG | Query 'India telecom bulk deal block deal' → 0 articles
+2026-05-11 16:51:06,369 | broad_market_rss_fetcher | DEBUG | Query 'India telecom listing IPO' → 22 articles
+2026-05-11 16:51:06,373 | broad_market_rss_fetcher | DEBUG | Query 'India telecom RBI regulation policy' → 3 articles
+2026-05-11 16:51:06,385 | broad_market_rss_fetcher | DEBUG | Query 'India telecom fraud scam default' → 0 articles
+2026-05-11 16:51:06,644 | broad_market_rss_fetcher | DEBUG | Query 'India chemicals fundraise QIP stake' → 0 articles
+2026-05-11 16:51:06,659 | broad_market_rss_fetcher | DEBUG | Query 'India chemicals dividend buyback bonus' → 0 articles
+2026-05-11 16:51:06,703 | broad_market_rss_fetcher | DEBUG | Query 'India chemicals deal acquisition merger' → 0 articles
+2026-05-11 16:51:06,708 | broad_market_rss_fetcher | DEBUG | Query 'India chemicals SEBI action penalty' → 1 articles
+2026-05-11 16:51:06,761 | broad_market_rss_fetcher | DEBUG | Query 'India chemicals results earnings profit loss' → 31 articles
+2026-05-11 16:51:06,768 | broad_market_rss_fetcher | DEBUG | Query 'India chemicals order contract win' → 2 articles
+2026-05-11 16:51:06,773 | broad_market_rss_fetcher | DEBUG | Query 'India chemicals guidance outlook forecast' → 1 articles
+2026-05-11 16:51:06,836 | broad_market_rss_fetcher | DEBUG | Query 'India chemicals expansion capacity plant' → 26 articles
+2026-05-11 16:51:06,983 | broad_market_rss_fetcher | DEBUG | Query 'India chemicals partnership agreement MOU' → 2 articles
+2026-05-11 16:51:07,004 | broad_market_rss_fetcher | DEBUG | Query 'India chemicals FDA approval recall' → 0 articles
+2026-05-11 16:51:07,071 | broad_market_rss_fetcher | DEBUG | Query 'India chemicals fraud scam default' → 0 articles
+2026-05-11 16:51:07,127 | broad_market_rss_fetcher | DEBUG | Query 'India chemicals bulk deal block deal' → 0 articles
+2026-05-11 16:51:07,134 | broad_market_rss_fetcher | DEBUG | Query 'India chemicals upgrade downgrade target price' → 4 articles
+2026-05-11 16:51:07,186 | broad_market_rss_fetcher | DEBUG | Query 'India chemicals RBI regulation policy' → 0 articles
+2026-05-11 16:51:07,211 | broad_market_rss_fetcher | DEBUG | Query 'India chemicals listing IPO' → 4 articles
+2026-05-11 16:51:07,389 | broad_market_rss_fetcher | DEBUG | Query 'India defence results earnings profit loss' → 24 articles
+2026-05-11 16:51:07,400 | broad_market_rss_fetcher | DEBUG | Query 'India defence deal acquisition merger' → 3 articles
+2026-05-11 16:51:07,406 | broad_market_rss_fetcher | DEBUG | Query 'India defence dividend buyback bonus' → 0 articles
+2026-05-11 16:51:07,434 | broad_market_rss_fetcher | DEBUG | Query 'India defence order contract win' → 10 articles
+2026-05-11 16:51:07,461 | broad_market_rss_fetcher | DEBUG | Query 'India defence SEBI action penalty' → 0 articles
+2026-05-11 16:51:07,502 | broad_market_rss_fetcher | DEBUG | Query 'India defence fundraise QIP stake' → 0 articles
+2026-05-11 16:51:07,616 | broad_market_rss_fetcher | DEBUG | Query 'India defence expansion capacity plant' → 16 articles
+2026-05-11 16:51:07,752 | broad_market_rss_fetcher | DEBUG | Query 'India defence FDA approval recall' → 0 articles
+2026-05-11 16:51:07,773 | broad_market_rss_fetcher | DEBUG | Query 'India defence partnership agreement MOU' → 16 articles
+2026-05-11 16:51:07,780 | broad_market_rss_fetcher | DEBUG | Query 'India defence guidance outlook forecast' → 1 articles
+2026-05-11 16:51:07,834 | broad_market_rss_fetcher | DEBUG | Query 'India defence RBI regulation policy' → 5 articles
+2026-05-11 16:51:07,838 | broad_market_rss_fetcher | DEBUG | Query 'India defence bulk deal block deal' → 0 articles
+2026-05-11 16:51:07,863 | broad_market_rss_fetcher | DEBUG | Query 'India defence listing IPO' → 8 articles
+2026-05-11 16:51:07,914 | broad_market_rss_fetcher | DEBUG | Query 'India defence upgrade downgrade target price' → 2 articles
+2026-05-11 16:51:07,949 | broad_market_rss_fetcher | DEBUG | Query 'India defence fraud scam default' → 0 articles
+2026-05-11 16:51:08,156 | broad_market_rss_fetcher | DEBUG | Query 'India real estate dividend buyback bonus' → 1 articles
+2026-05-11 16:51:08,167 | broad_market_rss_fetcher | DEBUG | Query 'India real estate deal acquisition merger' → 4 articles
+2026-05-11 16:51:08,179 | broad_market_rss_fetcher | DEBUG | Query 'India real estate SEBI action penalty' → 0 articles
+2026-05-11 16:51:08,185 | broad_market_rss_fetcher | DEBUG | Query 'India real estate fundraise QIP stake' → 0 articles
+2026-05-11 16:51:08,304 | broad_market_rss_fetcher | DEBUG | Query 'India real estate results earnings profit loss' → 49 articles
+2026-05-11 16:51:08,308 | broad_market_rss_fetcher | DEBUG | Query 'India real estate order contract win' → 2 articles
+2026-05-11 16:51:08,331 | broad_market_rss_fetcher | DEBUG | Query 'India real estate expansion capacity plant' → 8 articles
+2026-05-11 16:51:08,398 | broad_market_rss_fetcher | DEBUG | Query 'India real estate guidance outlook forecast' → 1 articles
+2026-05-11 16:51:08,482 | broad_market_rss_fetcher | DEBUG | Query 'India real estate FDA approval recall' → 0 articles
+2026-05-11 16:51:08,572 | broad_market_rss_fetcher | DEBUG | Query 'India real estate partnership agreement MOU' → 1 articles
+2026-05-11 16:51:08,595 | broad_market_rss_fetcher | DEBUG | Query 'India real estate listing IPO' → 20 articles
+2026-05-11 16:51:08,635 | broad_market_rss_fetcher | DEBUG | Query 'India real estate fraud scam default' → 1 articles
+2026-05-11 16:51:08,655 | broad_market_rss_fetcher | DEBUG | Query 'India real estate upgrade downgrade target price' → 2 articles
+2026-05-11 16:51:08,658 | broad_market_rss_fetcher | DEBUG | Query 'India real estate bulk deal block deal' → 0 articles
+2026-05-11 16:51:08,718 | broad_market_rss_fetcher | DEBUG | Query 'India real estate RBI regulation policy' → 10 articles
+2026-05-11 16:51:08,726 | broad_market_rss_fetcher | DEBUG | Query 'India company fraud default NPA today' → 0 articles
+2026-05-11 16:51:08,961 | broad_market_rss_fetcher | DEBUG | Query 'India stock SEBI insider trading today' → 58 articles
+2026-05-11 16:51:08,964 | broad_market_rss_fetcher | DEBUG | Query 'India company merger demerger today' → 1 articles
+2026-05-11 16:51:08,986 | broad_market_rss_fetcher | DEBUG | Query 'India company FDA recall warning today' → 3 articles
+2026-05-11 16:51:08,992 | broad_market_rss_fetcher | DEBUG | Query 'India company acquisition buyout today' → 6 articles
+2026-05-11 16:51:09,058 | broad_market_rss_fetcher | DEBUG | Query 'India company FDA USFDA approval today' → 7 articles
+2026-05-11 16:51:09,138 | broad_market_rss_fetcher | DEBUG | Query 'India company order win today' → 42 articles
+2026-05-11 16:51:09,170 | broad_market_rss_fetcher | DEBUG | Query 'India company buyback announced today' → 31 articles
+2026-05-11 16:51:09,286 | broad_market_rss_fetcher | DEBUG | Query 'India company rights issue QIP today' → 5 articles
+2026-05-11 16:51:09,308 | broad_market_rss_fetcher | DEBUG | Query 'India company dividend announced today' → 35 articles
+2026-05-11 16:51:09,377 | broad_market_rss_fetcher | DEBUG | Query 'India company debt restructure today' → 5 articles
+2026-05-11 16:51:09,434 | broad_market_rss_fetcher | DEBUG | Query 'NSE ASM ESM surveillance today' → 0 articles
+2026-05-11 16:51:09,469 | broad_market_rss_fetcher | DEBUG | Query 'India company plant shutdown today' → 11 articles
+2026-05-11 16:51:09,499 | broad_market_rss_fetcher | DEBUG | Query 'India company stake sale today' → 47 articles
+2026-05-11 16:51:09,593 | broad_market_rss_fetcher | DEBUG | Query 'India company capex expansion today' → 32 articles
+2026-05-11 16:51:16,108 | broad_market_rss_fetcher | INFO | Fetch complete    — 2379 raw articles
+2026-05-11 16:51:16,110 | broad_market_rss_fetcher | INFO | Timestamp stats   — 0 unparseable, 0 genuinely older than 48h
+2026-05-11 16:51:16,111 | broad_market_rss_fetcher | INFO | Age filter        — 2379 → 2379 (within 48h)
+2026-05-11 16:51:17,704 | broad_market_rss_fetcher | INFO | Dedup             — 2379 → 1253 unique articles
+2026-05-11 16:51:17,717 | broad_market_rss_fetcher | INFO | Saved 1253 articles → data/rss_output/broad_market_articles.json
+2026-05-11 16:51:17,718 | broad_market_rss_fetcher | INFO | ============================================================
