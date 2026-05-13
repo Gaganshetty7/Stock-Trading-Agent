@@ -56,89 +56,285 @@ _DT_MIN = datetime.min.replace(tzinfo=timezone.utc)
 
 # ── Query grid ────────────────────────────────────────────────────────────────
 
+# ============================================================
+# Broad Market Sweepers
+# ============================================================
+
 _BROAD_SWEEPERS = [
     "NSE BSE India stock market today",
     "India stock market news today",
-    "India quarterly results earnings today",
-    "India corporate results profit loss",
+    "India quarterly results today",
+    "India corporate earnings today",
     "NSE BSE share price today",
-    "India stock market movers gainers losers",
-    "India FII DII investment today",
-    "India bulk deal block deal today",
-    "India IPO listing NSE BSE today",
-    "SEBI action order India today",
-    "RBI policy decision India today",
-    "India market rally crash today",
-    "India 52 week high low NSE",
-    "India upper circuit lower circuit stock",
-    "India mutual fund investment news",
-    "India stock analyst target price",
-    "India company guidance outlook forecast",
-    "India promoter stake sale pledge",
-    "India board meeting AGM EGM",
-    "India rights issue QIP preferential allotment",
+    "India stock market gainers losers",
+    "India FII DII activity today",
+    "India bulk deal today",
+    "India IPO news today",
+    "SEBI action India today",
+    "RBI policy India today",
+    "India market rally today",
+    "India 52 week high stocks",
+    "India upper circuit stocks",
+    "India mutual fund news",
+    "India analyst target price",
+    "India company earnings guidance",
+    "India promoter stake sale",
+    "India dividend buyback today",
+    "India rights issue today",
+    "India takeover open offer",
+    "India earnings surprise stocks",
+    "India capex expansion company",
+    "India company revenue profit",
+    "India company order win",
+    "India large contract win India",
 ]
 
-_SECTORS = [
-    "banking",
-    "pharma",
-    "IT",
-    "infrastructure",
-    "energy",
-    "FMCG",
-    "metals",
-    "auto",
-    "telecom",
-    "chemicals",
-    "defence",
-    "real estate",
+
+
+# ============================================================
+# High Signal Queries
+# Low volume but HIGH market impact.
+# Keep even if article count is smaller.
+# ============================================================
+
+_HIGH_SIGNAL = [
+    "India company merger today",
+    "India takeover bid today",
+    "India defence order today",
+    "India pharma FDA approval",
+    "India pharma drug approval",
+    "India QIP issue today",
+    "India rights issue record date",
+    "India buyback record date",
+    "India dividend record date",
+    "India stake sale today",
+    "India insolvency NCLT",
+    "India plant shutdown company",
+    "India capex expansion",
+    "India insider trading SEBI",
+    "India acquisition deal today",
 ]
 
-_EVENT_TYPES = [
-    "results earnings profit loss",
-    "order contract win",
-    "deal acquisition merger",
-    "SEBI action penalty",
-    "dividend buyback bonus",
-    "expansion capacity plant",
-    "fundraise QIP stake",
-    "guidance outlook forecast",
-    "FDA approval recall",
-    "partnership agreement MOU",
-    "listing IPO",
-    "upgrade downgrade target price",
-    "bulk deal block deal",
-    "RBI regulation policy",
-    "fraud scam default",
-]
+# ============================================================
+# Sector-Specific Semantic Query Mapping
+# ============================================================
+
+_SECTOR_EVENT_MAP: dict[str, list[str]] = {
+
+    # ========================================================
+    # BANKING
+    # ========================================================
+
+    "banking": [
+        "results profit",
+        "loan growth",
+        "bank expansion",
+        "bank partnership",
+        "target price",
+        "RBI policy",
+        "bank IPO",
+        "bank earnings",
+        "bank stocks",
+        "credit growth",
+    ],
+
+    # ========================================================
+    # PHARMA
+    # ========================================================
+
+    "pharma": [
+        "results profit",
+        "FDA approval",
+        "drug approval",
+        "export order",
+        "capacity expansion",
+        "licensing deal",
+        "target price",
+        "pharma earnings",
+        "pharma IPO",
+        "US market",
+    ],
+
+    # ========================================================
+    # IT
+    # ========================================================
+
+    "IT": [
+        "results profit",
+        "AI partnership",
+        "cloud deal",
+        "data center expansion",
+        "target price",
+        "IT hiring",
+        "IT earnings",
+        "block deal",
+        "digital transformation",
+        "software deal",
+    ],
+
+    # ========================================================
+    # INFRASTRUCTURE
+    # ========================================================
+
+    "infrastructure": [
+        "EPC order",
+        "project win",
+        "results profit",
+        "construction order",
+        "road project",
+        "railway project",
+        "capacity expansion",
+        "target price",
+        "infrastructure IPO",
+        "government project",
+    ],
+
+    # ========================================================
+    # ENERGY
+    # ========================================================
+
+    "energy": [
+        "renewable energy",
+        "solar project",
+        "wind project",
+        "results profit",
+        "oil gas",
+        "capacity expansion",
+        "energy IPO",
+        "target price",
+        "power project",
+        "green energy",
+    ],
+
+    # ========================================================
+    # FMCG
+    # ========================================================
+
+    "FMCG": [
+        "results profit",
+        "sales growth",
+        "consumer demand",
+        "capacity expansion",
+        "FMCG earnings",
+        "distribution expansion",
+        "retail growth",
+    ],
+
+    # ========================================================
+    # METALS
+    # ========================================================
+
+    "metals": [
+        "steel production",
+        "aluminium production",
+        "results profit",
+        "mining expansion",
+        "steel export",
+        "capacity expansion",
+        "metal stocks",
+        "commodity prices",
+    ],
+
+    # ========================================================
+    # AUTO
+    # ========================================================
+
+    "auto": [
+        "vehicle sales",
+        "EV expansion",
+        "results profit",
+        "auto exports",
+        "manufacturing expansion",
+        "target price",
+        "auto earnings",
+        "car sales",
+        "two wheeler sales",
+        "auto stocks",
+    ],
+
+    # ========================================================
+    # TELECOM
+    # ========================================================
+
+    "telecom": [
+        "5G expansion",
+        "spectrum news",
+        "telecom earnings",
+        "results profit",
+        "subscriber growth",
+        "telecom IPO",
+        "target price",
+        "network expansion",
+        "broadband growth",
+    ],
+
+    # ========================================================
+    # CHEMICALS
+    # ========================================================
+
+    "chemicals": [
+        "specialty chemicals",
+        "chemical exports",
+        "results profit",
+        "capacity expansion",
+        "chemical stocks",
+        "target price",
+        "chemical earnings",
+        "export demand",
+    ],
+
+    # ========================================================
+    # DEFENCE
+    # ========================================================
+
+    "defence": [
+        "defence order",
+        "government contract",
+        "results profit",
+        "military equipment",
+        "manufacturing expansion",
+        "defence stocks",
+        "target price",
+        "Make in India defence",
+    ],
+
+    # ========================================================
+    # REAL ESTATE
+    # ========================================================
+
+    "real estate": [
+        "property sales",
+        "housing demand",
+        "real estate earnings",
+        "commercial project",
+        "construction expansion",
+        "home loan policy",
+        "REIT IPO",
+        "target price",
+        "real estate stocks",
+        "property launches",
+    ],
+}
+
+# ============================================================
+# Generate Final Sector Queries
+# ============================================================
 
 _SECTOR_EVENT_QUERIES = [
     f"India {sector} {event}"
-    for sector in _SECTORS
-    for event in _EVENT_TYPES
+    for sector, events in _SECTOR_EVENT_MAP.items()
+    for event in events
 ]
 
-_HIGH_SIGNAL = [
-    "India company fraud default NPA today",
-    "India stock SEBI insider trading today",
-    "India company acquisition buyout today",
-    "India company merger demerger today",
-    "India company order win today",
-    "India company FDA USFDA approval today",
-    "India company FDA recall warning today",
-    "India company dividend announced today",
-    "India company buyback announced today",
-    "India company rights issue QIP today",
-    "India company stake sale today",
-    "India company debt restructure today",
-    "India company plant shutdown today",
-    "India company capex expansion today",
-    "NSE ASM ESM surveillance today",
-]
+# ============================================================
+# Final Master Query List
+# ============================================================
 
-ALL_QUERIES = _BROAD_SWEEPERS + _SECTOR_EVENT_QUERIES + _HIGH_SIGNAL
-
-
+ALL_QUERIES = (
+    _BROAD_SWEEPERS
+    + _SECTOR_EVENT_QUERIES
+    + _HIGH_SIGNAL
+)
 # ── Text helpers ──────────────────────────────────────────────────────────────
 
 def _clean_text(raw: str) -> str:
@@ -350,7 +546,7 @@ async def fetch_broad_market_rss(max_age_hours: int = 72) -> list[dict]:
     semaphore    = asyncio.Semaphore(BATCH_CONCURRENCY)
     all_articles: list[dict] = []
 
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(trust_env=True) as session:
         tasks = [
             _fetch_query(session, query, semaphore, max_age_hours)
             for query in ALL_QUERIES
