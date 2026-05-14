@@ -45,7 +45,7 @@ BATCH_CONCURRENCY      = 8
 STAGGER_DELAY          = 0.25
 MAX_RETRIES            = 1
 RETRY_DELAY            = 10
-DEDUP_SIMILARITY       = 82
+DEDUP_SIMILARITY       = 60
 
 OUTPUT_DIR  = Path("data/rss_output")
 OUTPUT_FILE = OUTPUT_DIR / "broad_market_articles.json"
@@ -192,7 +192,7 @@ def _get_published_dt(entry) -> datetime:
 def _human_age(pub_dt: datetime) -> str:
     if pub_dt == _DT_MIN:
         return "unknown"
-    secs = (datetime.now(timezone.utc) - pub_dt).total_seconds()
+    secs = max(0, (datetime.now(timezone.utc) - pub_dt).total_seconds())
     if secs < 3600:
         return f"{int(secs / 60)}m ago"
     if secs < 86400:
@@ -200,20 +200,10 @@ def _human_age(pub_dt: datetime) -> str:
     return f"{int(secs / 86400)}d ago"
 
 
-def _extract_summary(entry, raw_title: str) -> str:
-    raw     = getattr(entry, "summary", "") or ""
+def _extract_summary(entry) -> str:
+    raw = getattr(entry, "description", getattr(entry, "summary", "")) or ""
     cleaned = _clean_text(raw)
-    cleaned = re.sub(r"\s*[-–]\s*[A-Z][A-Za-z0-9 &.,']{2,35}$", "", cleaned).strip()
-    if re.sub(r"[^a-zA-Z0-9]", "", cleaned).lower().startswith(
-        re.sub(r"[^a-zA-Z0-9]", "", raw_title).lower()[:40]
-    ):
-        tail = cleaned[len(raw_title):].strip(" -:|/–")
-        if len(tail) >= 30:
-            return tail[:MAX_SUMMARY_LEN]
-        cleaned = ""
-    if len(cleaned) >= 30:
-        return cleaned[:MAX_SUMMARY_LEN]
-    return re.sub(r"\s*[-–|]\s*[A-Z][A-Za-z0-9 &.,']{2,35}$", "", raw_title).strip()[:MAX_SUMMARY_LEN]
+    return cleaned[:MAX_SUMMARY_LEN]
 
 
 # ── Single query fetch ────────────────────────────────────────────────────────
@@ -267,7 +257,7 @@ async def _fetch_query(
 
     for entry in feed.entries[:MAX_ARTICLES_PER_QUERY]:
         raw_title = _clean_text(getattr(entry, "title", "") or "")
-        summary   = _extract_summary(entry, raw_title)
+        summary   = _extract_summary(entry)
 
         source_match = re.search(r"\s*[-–]\s*([A-Z][A-Za-z0-9 &.,']{2,35})$", raw_title)
         title  = raw_title[:source_match.start()].strip() if source_match else raw_title
@@ -275,7 +265,7 @@ async def _fetch_query(
 
         pub_dt    = _get_published_dt(entry)
         hours_old = (
-            (datetime.now(timezone.utc) - pub_dt).total_seconds() / 3600
+            max(0, (datetime.now(timezone.utc) - pub_dt).total_seconds() / 3600)
             if pub_dt != _DT_MIN else 9999
         )
 
@@ -307,7 +297,7 @@ def _deduplicate(articles: list[dict]) -> list[dict]:
         if art["url"] and art["url"] in seen_urls:
             continue
         if any(
-            fuzz.token_sort_ratio(art["title"], t) >= DEDUP_SIMILARITY
+            fuzz.token_set_ratio(art["title"], t) >= DEDUP_SIMILARITY
             for t in seen_titles
         ):
             continue
@@ -324,7 +314,7 @@ def _deduplicate(articles: list[dict]) -> list[dict]:
 def _save_output(articles: list[dict]) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     payload = {
-        "fetched_at":     datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "fetched_at_ist": datetime.now(IST).strftime("%Y-%m-%dT%H:%M:%S%z"),
         "total_articles": len(articles),
         "articles":       articles,
     }
@@ -335,7 +325,7 @@ def _save_output(articles: list[dict]) -> None:
 
 # ── Main tool function ────────────────────────────────────────────────────────
 
-async def fetch_broad_market_rss(max_age_hours: int = 72) -> list[dict]:
+async def fetch_broad_market_rss(max_age_hours: int = 6) -> list[dict]:
     logger.info("=" * 60)
     logger.info("Starting broad market RSS sweep")
     logger.info(f"  Total queries:   {len(ALL_QUERIES)}")

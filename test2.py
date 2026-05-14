@@ -3,12 +3,15 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+import pytz
 
 from core.tool import get_tool, init_tools
 
+MAX_AGE_HOURS = 12
 
-async def test_broad_fetch(max_age_hours: int = 48) -> None:
-    run_start_utc = datetime.now(timezone.utc)
+async def test_broad_fetch(max_age_hours: int = MAX_AGE_HOURS) -> None:
+    ist = pytz.timezone("Asia/Kolkata")
+    run_start_ist = datetime.now(ist)
     run_start_ts = time.perf_counter()
 
     init_tools()
@@ -17,14 +20,14 @@ async def test_broad_fetch(max_age_hours: int = 48) -> None:
     print(f"[TEST2] Running broad RSS fetch with max_age_hours={max_age_hours}")
     articles = await fetch_tool(max_age_hours=max_age_hours)
 
-    run_end_utc = datetime.now(timezone.utc)
+    run_end_ist = datetime.now(ist)
     elapsed_seconds = round(time.perf_counter() - run_start_ts, 2)
 
     payload = {
         "metadata": {
-            "generated_at_utc":      run_end_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "run_started_at_utc":    run_start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "run_finished_at_utc":   run_end_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "generated_at_ist":      run_end_ist.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "run_started_at_ist":    run_start_ist.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "run_finished_at_ist":   run_end_ist.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "run_duration_seconds":  elapsed_seconds,
             "max_age_hours":         max_age_hours,
             "total_articles":        len(articles),
@@ -32,7 +35,7 @@ async def test_broad_fetch(max_age_hours: int = 48) -> None:
         "articles": articles,
     }
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(ist).strftime("%Y%m%d_%H%M%S")
     output_path = Path("outputs") / f"broad_market_test_report_{timestamp}.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
