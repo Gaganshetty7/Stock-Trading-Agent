@@ -7,7 +7,7 @@ import pytz
 
 from core.tool import get_tool, init_tools
 
-MAX_AGE_HOURS = 12
+MAX_AGE_HOURS = 24
 
 async def test_broad_fetch(max_age_hours: int = MAX_AGE_HOURS) -> None:
     ist = pytz.timezone("Asia/Kolkata")
