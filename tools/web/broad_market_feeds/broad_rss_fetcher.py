@@ -15,7 +15,10 @@ from .text_helpers import (
     get_published_dt, human_age, extract_summary,
     MAX_SUMMARY_LEN
 )
+import os
+import glob
 from .deduplication import deduplicate
+from .news_mapper import map_news_to_tickers
 
 logger = get_logger("broad_market_rss_fetcher")
 
@@ -26,9 +29,6 @@ BATCH_CONCURRENCY      = 8
 STAGGER_DELAY          = 0.25
 MAX_RETRIES            = 1
 RETRY_DELAY            = 10
-
-OUTPUT_DIR  = Path("data/rss_output")
-OUTPUT_FILE = OUTPUT_DIR / "broad_market_articles.json"
 
 async def _fetch_query(
     session: aiohttp.ClientSession,
@@ -107,18 +107,23 @@ async def _fetch_query(
     logger.debug(f"Query '{query}' → {len(entries)} articles")
     return entries
 
-def _save_output(articles: list[dict]) -> None:
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "fetched_at_ist": datetime.now(IST).strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "total_articles": len(articles),
-        "articles":       articles,
-    }
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
-    logger.info(f"Saved {len(articles)} articles → {OUTPUT_FILE}")
+def _cleanup_legacy_files(outputs_dir: Path) -> None:
+    for f in outputs_dir.glob("broad_market_test_report_*.json"):
+        try:
+            f.unlink()
+            logger.info(f"Deleted legacy report: {f.name}")
+        except Exception as e:
+            logger.warning(f"Failed to delete {f.name}: {e}")
+            
+    legacy_mapped = outputs_dir / "mapped_news.json"
+    if legacy_mapped.exists():
+        try:
+            legacy_mapped.unlink()
+            logger.info(f"Deleted legacy mapped_news: {legacy_mapped.name}")
+        except Exception as e:
+            logger.warning(f"Failed to delete {legacy_mapped.name}: {e}")
 
-async def fetch_broad_market_rss(max_age_hours: int = 6) -> list[dict]:
+async def fetch_broad_market_rss(max_age_hours: int = 6) -> dict:
     logger.info("=" * 60)
     logger.info("Starting broad market RSS sweep")
     logger.info(f"  Total queries:   {len(FINAL_MASTER_QUERY_LIST)}")
@@ -162,7 +167,37 @@ async def fetch_broad_market_rss(max_age_hours: int = 6) -> list[dict]:
     unique = deduplicate(filtered)
     logger.info(f"Dedup             — {len(filtered)} → {len(unique)} unique articles")
 
-    _save_output(unique)
-
+    # Map to tickers
+    alias_file = Path("resources/aliases/alias_lookup.json")
+    if alias_file.exists():
+        with open(alias_file, "r", encoding="utf-8") as f:
+            alias_lookup = json.load(f)
+    else:
+        logger.warning(f"Alias lookup file not found at {alias_file}, returning empty mapping")
+        alias_lookup = {}
+        
+    mapped_news_data = map_news_to_tickers(unique, alias_lookup)
+    logger.info(f"Mapped to {len(mapped_news_data)} unique companies")
+    
+    timestamp = datetime.now(IST).strftime("%Y%m%d_%H%M%S")
+    outputs_dir = Path("outputs")
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    
+    _cleanup_legacy_files(outputs_dir)
+    
+    payload = {
+        "metadata": {
+            "total_companies": len(mapped_news_data),
+            "total_articles": len(unique),
+            "generated_at": datetime.now(IST).strftime("%Y-%m-%dT%H:%M:%S%z")
+        },
+        "mapped_news": mapped_news_data
+    }
+    
+    output_file = outputs_dir / f"mapped_news_{timestamp}.json"
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+        
+    logger.info(f"Saved mapped news → {output_file}")
     logger.info("=" * 60)
-    return unique
+    return payload
