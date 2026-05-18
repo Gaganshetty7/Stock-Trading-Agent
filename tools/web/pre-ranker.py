@@ -106,7 +106,15 @@ async def main():
     with open(args.input, "r") as f:
         data = json.load(f)
     
-    mapped_news = data.get("mapped_news", {})
+    # Handle both nested and flat mapped news
+    if "mapped_news" in data:
+        mapped_news = data["mapped_news"]
+    elif any(isinstance(v, dict) and "company_insights" in v for v in data.values()):
+        mapped_news = data
+    else:
+        print("Error: Input JSON does not seem to contain mapped news with company_insights.")
+        return
+    
     work = []
     SCORE_THRESHOLD = 5
 
