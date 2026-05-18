@@ -32,7 +32,7 @@ def describe_tools(names: list[str]) -> str:
 # ── Tool Initialization ───────────────────────────────────────────────────────
 from tools.web.rss_reader import fetch_rss
 from tools.storage.file_writer import write_json
-from tools.web.broad_rss_fetcher import fetch_broad_market_rss
+from tools.web.broad_market_feeds.broad_rss_fetcher import fetch_broad_market_rss
 
 
 def init_tools() -> None:
