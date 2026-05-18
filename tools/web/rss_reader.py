@@ -314,7 +314,7 @@ async def fetch_all(queries: list[tuple[str, str]]) -> list[dict]:
         "retries": 0,
     }
 
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(trust_env=True) as session:
         tasks = []
         for i, (stock, query) in enumerate(queries):
             tasks.append(fetch_single(session, stock, query, semaphore))

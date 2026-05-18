@@ -1,25 +1,24 @@
 """
 article_ranker.py
 ─────────────────
-Batches 5 companies per LLM call.
+Pipeline:
+  1. Load input JSON — supports both {ticker:...} and {mapped_news:{ticker:...}} formats
+  2. Keyword pre-filter  → keep articles with market signal
+  3. Async fetch         → follow Google News redirect → scrape article text (first 1200 chars)
+  4. Batch LLM score     → 6 companies per call, LLM ranks + scores using real content
+  5. Write output JSON
 
-Speed math (276 companies, 2 keys, 60 effective RPM):
-  276 ÷ 6 = 46 calls
-  Spaced by 1.0s = 46 seconds total dispatch time  ✓ under 1 minute
-
-Tuning:
-  BATCH_SIZE = 6  → optimum for 276 companies within 60 RPM
-  BATCH_SIZE = 8  → faster, model starts dropping tickers
-  BATCH_SIZE = 10+ → not recommended, output degrades
+Speed estimate (285 companies, 2 keys, 60 effective RPM):
+  Step 3: fetch ~570 articles concurrently → ~15-25s
+  Step 4: 48 batches at 60 RPM → ~48s
+  Total: ~60-90s
 
 Setup:
   export GEMINI_KEY_1="AIza..."
   export GEMINI_KEY_2="AIza..."
 
-Usage:
-  PYTHONPATH=. python tools/web/article-ranker.py \
-      --input  outputs/mapped_news3.json \
-      --output outputs/scored_articles.json
+Dependencies:
+  pip install aiohttp beautifulsoup4 langchain-google-genai python-dotenv
 """
 
 import asyncio
@@ -29,9 +28,10 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Dict, List, Any
-from dotenv import load_dotenv
+from typing import Dict, List, Any, Optional
 
+
+from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -39,11 +39,15 @@ load_dotenv()
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
-MODEL      = "gemini-3.1-flash-lite"   # 30 RPM/key free tier
-BATCH_SIZE = 6                          # companies per LLM call
-TOP_N      = 2                          # articles to score per company
-LLM_TIMEOUT = 45                        # seconds per batch call
-MAX_RETRIES = 3
+MODEL             = "gemini-3.1-flash-lite"
+BATCH_SIZE        = 10
+TOP_N             = 2
+LLM_TIMEOUT       = 45
+MAX_RETRIES       = 3
+FETCH_TIMEOUT     = 8
+FETCH_MAX_CHARS   = 800
+FETCH_CONCURRENCY = 40
+CONCURRENCY       = 15   # concurrent LLM batch calls
 
 _KEY_1 = os.environ.get("GEMINI_KEY_1", "")
 _KEY_2 = os.environ.get("GEMINI_KEY_2", "")
@@ -51,21 +55,80 @@ API_KEYS = [k for k in [_KEY_1, _KEY_2] if k]
 if not API_KEYS:
     raise RuntimeError("Set GEMINI_KEY_1 (and optionally GEMINI_KEY_2) env vars")
 
-# One semaphore slot per key — each key handles 1 concurrent batch call
-# However, to maximize the 60 RPM we should launch them concurrently.
-CONCURRENCY = 15
+# ── Keyword pre-filter ─────────────────────────────────────────────────────────
 
-# ── Filter ───────────────────────────────────────────────────────────────────
+_SIGNAL_KEYWORDS = {
+    "results", "earnings", "profit", "loss", "revenue", "margin", "ebitda",
+    "order", "contract", "win", "deal", "merger", "acquisition", "takeover",
+    "buyback", "dividend", "stake", "promoter", "fda", "usfda", "dcgi",
+    "approval", "sebi", "guidance", "capex", "expansion", "plant", "shutdown",
+    "insolvency", "nclt", "ipo", "bulk deal", "block deal", "open offer",
+    "rights issue", "qip", "defence", "railway", "q1", "q2", "q3", "q4",
+    "fy26", "fy25", "turnover", "fund", "raises", "upgrade", "downgrade",
+    "target price", "beat", "miss", "forecast", "outlook", "target",
+    "price target", "buy", "sell", "share price", "valuation", "joint venture",
+    "manufacturing", "delivery", "production", "capacity", "tender",
+}
 
 def filter_articles(articles: List[Dict]) -> List[Dict]:
-    """Pass all articles directly to the LLM (capped to 10 to fit context)."""
-    return articles[:10]
+    """Keep signal articles; send up to TOP_N*3 to LLM so it can pick the best TOP_N."""
+    filtered = [a for a in articles if any(
+        kw in a.get("title", "").lower() for kw in _SIGNAL_KEYWORDS
+    )]
+    # If nothing passes filter, send all (avoid skipping companies entirely)
+    return (filtered or articles)[:TOP_N * 3]
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+# ── Input loader ───────────────────────────────────────────────────────────────
 
 def load_input(path: str) -> dict:
+    """
+    Supports two formats:
+      Format A (flat):        {"TICKER": {"company_insights": [...]}, ...}
+      Format B (mapped_news): {"metadata": {...}, "mapped_news": {"TICKER": {...}, ...}}
+    """
     with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        raw = json.load(f)
+    # If there's a mapped_news key, use that — otherwise use the root dict
+    return raw.get("mapped_news", raw)
+
+# ── Article fetcher ────────────────────────────────────────────────────────────
+
+_FETCH_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,*/*",
+    "Accept-Language": "en-IN,en;q=0.9",
+}
+
+_BLOCKED_DOMAINS = {
+    # Paywalled — returns login wall, not content
+    "economictimes.indiatimes.com",
+    "livemint.com",
+    "business-standard.com",
+    "thehindu.com",
+    "financialexpress.com",
+    "bloomberg.com",
+    "reuters.com",
+    "wsj.com",
+}
+
+def _domain(url: str) -> str:
+    m = re.search(r"https?://(?:www\.)?([^/]+)", url)
+    return m.group(1) if m else ""
+
+from browser_summarizer import async_batch_summarize
+
+async def fetch_all_articles(articles_flat: List[Dict]) -> Dict[str, Optional[str]]:
+    """Fetch content for all articles concurrently using Playwright. Returns {link: content_or_None}."""
+    unique = {a.get("link"): a for a in articles_flat if a.get("link")}
+    if not unique:
+        return {}
+
+    articles_to_fetch = list(unique.values())
+    scraped_results = await async_batch_summarize(articles_to_fetch, max_workers=50, timeout_ms=5000)
+
+    return {res.get("link", ""): res.get("summary", "") for res in scraped_results}
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
 def extract_text(content) -> str:
     if isinstance(content, list):
@@ -87,6 +150,7 @@ def fallback_company(ticker: str, articles: List[Dict], reason: str) -> Dict:
             "source":         a.get("source", ""),
             "link":           a.get("link", ""),
             "published_date": a.get("published_date", ""),
+            "content_fetched": False,
             "summary":        "",
             "catalyst":       reason,
             "direction":      "NEUTRAL",
@@ -98,33 +162,34 @@ def fallback_company(ticker: str, articles: List[Dict], reason: str) -> Dict:
 
 # ── Prompt builder ─────────────────────────────────────────────────────────────
 
-def build_batch_prompt(batch: List[Dict]) -> str:
-    """
-    batch = [{"ticker": "RELIANCE", "articles": [{"title":..., "published_date":...}, ...]}, ...]
-    """
+def build_batch_prompt(batch: List[Dict], content_map: Dict[str, Optional[str]]) -> str:
     companies_text = ""
     for comp in batch:
         ticker = comp["ticker"]
-        articles_text = "\n".join(
-            f"  {i+1}. {a['title']}  [{a.get('published_date','?')}]"
-            for i, a in enumerate(comp["articles"])
-        )
-        companies_text += f"\nTICKER: {ticker}\n{articles_text}\n"
+        articles_text = ""
+        for i, a in enumerate(comp["articles"]):
+            content = content_map.get(a.get("link", ""))
+            if not content and a.get("summary"):
+                content = a.get("summary")
+            snippet = f"\n     Content: {content}" if content else ""
+            articles_text += f"  {i+1}. {a['title']}  [{a.get('published_date','?')}]{snippet}\n"
+        companies_text += f"\nTICKER: {ticker}\n{articles_text}"
 
     return f"""You are a quantitative analyst covering Indian equities (NSE/BSE).
 
 TASK: For EACH of the {len(batch)} companies below, pick the {TOP_N} most market-moving articles and score them.
+Where article content is provided, USE IT to cite specific numbers (revenue, order value, %, beat/miss).
 
 RULES:
 - Prefer: earnings beat/miss vs estimates, orders with ₹ value, M&A, FDA/regulatory actions
 - Avoid: generic roundups, articles where the ticker is a minor mention
-- You MUST return a result for EVERY ticker listed — do not skip any
+- DISCARD LOW QUALITY: If a company has absolutely NO market-moving news (e.g. only generic coverage, minor mentions, or no hard catalysts), DO NOT include that company in your output at all. Only output companies that have at least one valid catalyst.
 
 CONFIDENCE GUIDE:
-  85-100 → hard catalyst with clear direction (earnings beat/miss vs estimates, named ₹ order value, M&A price known)
-  60-84  → results without estimate comparison, order win without value, regulatory filing
-  35-59  → sector news, analyst note without new data, management commentary
-  0-34   → brief mention, generic roundup
+  85-100 → hard catalyst WITH specific number: earnings % beat/miss, ₹ order value, M&A price known
+  60-84  → results/order/regulatory but no specific comparative number
+  35-59  → sector news, analyst note, management commentary without hard data
+  0-34   → brief mention or generic market roundup
 
 {companies_text}
 
@@ -136,11 +201,11 @@ Return ONLY a JSON object. No markdown. No explanation. Every ticker must appear
       "scored_articles": [
         {{
           "article_index": <1-based int from the list above>,
-          "summary": "<2 sentences: what happened and the key number or fact>",
-          "catalyst": "<3-5 words: e.g. Q4 profit beat, Defence order win>",
+          "summary": "<STRICTLY 2 to 3 sentences: what happened and the KEY numbers or facts>",
+          "catalyst": "<3-5 words: e.g. Q4 profit beat, ₹500Cr defence order>",
           "direction": "BULLISH" | "BEARISH" | "NEUTRAL",
           "confidence": <int 0-100>,
-          "reasoning": "<2-3 sentences citing specific data from the title>",
+          "reasoning": "<2-3 sentences citing SPECIFIC data from content or title>",
           "impact_summary": "<1 sentence for a trader: what to act on today>"
         }}
       ]
@@ -153,13 +218,10 @@ Return ONLY a JSON object. No markdown. No explanation. Every ticker must appear
 async def run_batch(
     llm,
     batch: List[Dict],
+    content_map: Dict[str, Optional[str]],
     batch_label: str,
 ) -> Dict[str, Dict]:
-    """
-    Returns dict of ticker → scored company dict.
-    Falls back gracefully per-company on parse failure.
-    """
-    prompt = build_batch_prompt(batch)
+    prompt = build_batch_prompt(batch, content_map)
     ticker_to_articles = {c["ticker"]: c["articles"] for c in batch}
 
     for attempt in range(MAX_RETRIES + 1):
@@ -187,16 +249,17 @@ async def run_batch(
                     art = articles[idx]
                     conf = r.get("confidence", 0)
                     scored.append({
-                        "title":          art.get("title", ""),
-                        "source":         art.get("source", ""),
-                        "link":           art.get("link", ""),
-                        "published_date": art.get("published_date", ""),
-                        "summary":        r.get("summary", ""),
-                        "catalyst":       r.get("catalyst", ""),
-                        "direction":      r.get("direction", "NEUTRAL"),
-                        "confidence":     f"{int(conf)}/100",
-                        "reasoning":      r.get("reasoning", ""),
-                        "impact_summary": r.get("impact_summary", ""),
+                        "title":           art.get("title", ""),
+                        "source":          art.get("source", ""),
+                        "link":            art.get("link", ""),
+                        "published_date":  art.get("published_date", ""),
+                        "content_fetched": bool(content_map.get(art.get("link", ""))),
+                        "summary":         r.get("summary", ""),
+                        "catalyst":        r.get("catalyst", ""),
+                        "direction":       r.get("direction", "NEUTRAL"),
+                        "confidence":      f"{int(conf)}/100",
+                        "reasoning":       r.get("reasoning", ""),
+                        "impact_summary":  r.get("impact_summary", ""),
                     })
                 results[ticker] = {
                     "ticker":          ticker,
@@ -204,11 +267,11 @@ async def run_batch(
                     "scored_articles": scored,
                 }
 
-            # Fill in any tickers the model silently dropped
+            # Log tickers the model deliberately dropped due to low quality
             for ticker, articles in ticker_to_articles.items():
                 if ticker not in returned_tickers:
-                    print(f"  [WARN] {batch_label} — model dropped {ticker}, using fallback")
-                    results[ticker] = fallback_company(ticker, articles, "Model did not return this ticker")
+                    pass  # Deliberately discarded by the LLM
+
 
             return results
 
@@ -227,8 +290,7 @@ async def run_batch(
                     break
                 await asyncio.sleep(2)
 
-    # All retries exhausted
-    print(f"  [FAIL] {batch_label} — all retries exhausted, using fallback for all")
+    print(f"  [FAIL] {batch_label} — all retries exhausted")
     return {
         c["ticker"]: fallback_company(c["ticker"], c["articles"], "Batch failed after retries")
         for c in batch
@@ -236,16 +298,18 @@ async def run_batch(
 
 # ── Main pipeline ──────────────────────────────────────────────────────────────
 
-async def process(input_path: str, output_path: str) -> None:
+async def process(input_path: str, output_path: str, no_fetch: bool = False) -> None:
     start = time.time()
     data = load_input(input_path)
     print(f"\nLoaded {len(data)} companies from {input_path}")
-    print(f"Model: {MODEL} | Keys: {len(API_KEYS)} | Batch size: {BATCH_SIZE}")
-    print(f"Effective RPM: {30 * len(API_KEYS)} | Concurrency: {CONCURRENCY}")
+    print(f"Model: {MODEL} | Keys: {len(API_KEYS)} | Batch: {BATCH_SIZE}")
+    print(f"Effective RPM: {30 * len(API_KEYS)} | LLM Concurrency: {CONCURRENCY}")
 
-    # Pre-filter
+    # Step 1: pre-filter
     work = []
     for ticker, company_data in data.items():
+        if ticker == "metadata":
+            continue
         insights = company_data.get("company_insights", [])
         if not insights:
             continue
@@ -254,36 +318,51 @@ async def process(input_path: str, output_path: str) -> None:
             work.append({"ticker": ticker, "articles": articles})
 
     skipped = len(data) - len(work)
-    print(f"After keyword filter: {len(work)} companies ({skipped} skipped)")
+    print(f"After filter: {len(work)} companies ({skipped} skipped — no insights)")
 
-    # Chunk into batches
+    # Step 2: fetch article content
+    content_map: Dict[str, Optional[str]] = {}
+    if not no_fetch:
+        all_articles_flat = [a for comp in work for a in comp["articles"]]
+        print(f"\nFetching content for {len(all_articles_flat)} articles...")
+        t_fetch = time.time()
+        content_map = await fetch_all_articles(all_articles_flat)
+        fetched_ok = sum(1 for v in content_map.values() if v)
+        print(f"Fetched: {fetched_ok}/{len(content_map)} articles got content ({time.time()-t_fetch:.1f}s)")
+    else:
+        print("Skipping article fetch (--no-fetch mode)")
+
+    # Step 3: batch LLM scoring
     batches = [work[i:i+BATCH_SIZE] for i in range(0, len(work), BATCH_SIZE)]
     n_calls = len(batches)
     est_secs = (n_calls / (30 * len(API_KEYS))) * 60
-    print(f"Batches: {n_calls} | Est. time: ~{est_secs:.0f}s\n")
+    print(f"\nLLM scoring: {n_calls} batches | Est. ~{est_secs:.0f}s")
 
-    # LLM pool — round robin across keys
     llm_pool = [make_llm(k) for k in API_KEYS]
     semaphore = asyncio.Semaphore(CONCURRENCY)
     companies_data: Dict[str, Any] = {}
     done = {"n": 0}
 
     async def dispatch_batch(i: int, batch: List[Dict]):
-        # Stagger the dispatches by 1 second horizontally to perfectly spread 
-        # the 46 batches over 46 seconds, guaranteeing no 429 burst limits.
-        await asyncio.sleep(i * 1.0)
+        await asyncio.sleep(i * 1.0)  # 1s stagger to spread RPM evenly
         async with semaphore:
             llm = llm_pool[i % len(llm_pool)]
-            label = f"{i+1}/{n_calls} ({[c['ticker'] for c in batch]})"
-            result = await run_batch(llm, batch, label)
+            label = f"{i+1}/{n_calls}"
+            result = await run_batch(llm, batch, content_map, label)
             companies_data.update(result)
             done["n"] += len(result)
             tickers = ", ".join(result.keys())
-            print(f"  ✓ Batch {i+1}/{n_calls} → {tickers} [{done['n']}/{len(work)} done]")
+            print(f"  ✓ Batch {i+1}/{n_calls} → {tickers} [{done['n']}/{len(work)}]")
 
     await asyncio.gather(*[dispatch_batch(i, batch) for i, batch in enumerate(batches)])
 
     elapsed = time.time() - start
+    fetched_count = sum(
+        1 for comp in companies_data.values()
+        for art in comp.get("scored_articles", [])
+        if art.get("content_fetched")
+    )
+
     output_data = {
         "metadata": {
             "input_file":             input_path,
@@ -293,10 +372,10 @@ async def process(input_path: str, output_path: str) -> None:
             "total_companies":        len(data),
             "companies_processed":    len(work),
             "companies_skipped":      skipped,
+            "articles_with_content":  fetched_count,
             "llm_calls_total":        n_calls,
             "execution_time_seconds": round(elapsed, 2),
             "execution_time_minutes": round(elapsed / 60, 2),
-            "concurrency":            CONCURRENCY,
             "timestamp":              time.time(),
         },
         "companies": companies_data,
@@ -308,19 +387,25 @@ async def process(input_path: str, output_path: str) -> None:
 
     print(f"\n{'='*55}")
     print(f"Done. {len(companies_data)} companies → {output_path}")
-    print(f"LLM calls: {n_calls} | Time: {elapsed:.1f}s ({elapsed/60:.2f} min)")
+    print(f"Articles with content: {fetched_count}")
+    print(f"Time: {elapsed:.1f}s ({elapsed/60:.2f} min)")
     print(f"{'='*55}\n")
 
 
 def main():
     global BATCH_SIZE
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input",  default="outputs/mapped_news3.json")
-    parser.add_argument("--output", default="outputs/scored_articles.json")
+    parser.add_argument("--input",      default="outputs/mapped_news3.json")
+    parser.add_argument("--output",     default=f"outputs/scored_articles_{timestamp}.json")
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
+    parser.add_argument("--no-fetch",   action="store_true",
+                        help="Skip article fetching (faster, title-only mode)")
     args = parser.parse_args()
     BATCH_SIZE = args.batch_size
-    asyncio.run(process(args.input, args.output))
+    asyncio.run(process(args.input, args.output, no_fetch=args.no_fetch))
 
 
 if __name__ == "__main__":

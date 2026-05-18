@@ -13,7 +13,7 @@ from .queries import FINAL_MASTER_QUERY_LIST
 from .text_helpers import (
     IST, _DT_MIN, clean_text, get_headers, 
     get_published_dt, human_age, extract_summary,
-    MAX_SUMMARY_LEN
+    extract_real_url, MAX_SUMMARY_LEN
 )
 import os
 import glob
@@ -95,7 +95,8 @@ async def _fetch_query(
             "title":     title,
             "source":    source,
             "summary":   summary,
-            "url":       getattr(entry, "link", "") or "",
+            "url":       extract_real_url(entry),
+            "gn_url":    getattr(entry, "link", "") or "",
             "age":       human_age(pub_dt),
             "age_h":     round(hours_old, 2),
             "published": (
@@ -166,6 +167,15 @@ async def fetch_broad_market_rss(max_age_hours: int = 6) -> dict:
 
     unique = deduplicate(filtered)
     logger.info(f"Dedup             — {len(filtered)} → {len(unique)} unique articles")
+
+    # Shifted from article-ranker: Fetch browser summaries at the source
+    try:
+        from tools.web.browser_summarizer import async_batch_summarize
+        logger.info(f"Scraping real textual summaries for {len(unique)} articles using Playwright...")
+        unique = await async_batch_summarize(unique, max_workers=50, timeout_ms=5000)
+    except ImportError:
+        logger.warning(f"Could not import browser_summarizer. Skipping heavy scraping.")
+
 
     # Map to tickers
     alias_file = Path("resources/aliases/alias_lookup.json")
