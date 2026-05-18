@@ -12,20 +12,18 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 load_dotenv()
 
 # -- Config --
-MODEL = "gemini-3.1-flash-lite"
+MODEL = "gemini-1.5-flash-8b"
 BATCH_SIZE = 15
-CONCURRENCY = 15
+CONCURRENCY = 10
 MAX_RETRIES = 3
 
-_KEY_1 = os.environ.get("GEMINI_KEY_1", "")
-_KEY_2 = os.environ.get("GEMINI_KEY_2", "")
-API_KEYS = [k for k in [_KEY_1, _KEY_2] if k]
+API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-if not API_KEYS:
-    raise RuntimeError("Set GEMINI_KEY_1 (and optionally GEMINI_KEY_2) env vars")
+if not API_KEY:
+    raise RuntimeError("Set GEMINI_API_KEY env var")
 
-def make_llm(api_key: str):
-    return ChatGoogleGenerativeAI(model=MODEL, google_api_key=api_key)
+def make_llm():
+    return ChatGoogleGenerativeAI(model=MODEL, google_api_key=API_KEY)
 
 def clean_json(text: str) -> str:
     text = re.sub(r'```json\s*', '', text)
@@ -142,13 +140,13 @@ async def rank_news_payload(mapped_news: Dict) -> Dict:
     print(f"Ranking {len(work)} companies (top 2 latest articles each)...")
     
     batches = [work[i:i+BATCH_SIZE] for i in range(0, len(work), BATCH_SIZE)]
-    llm_pool = [make_llm(k) for k in API_KEYS]
+    llm = make_llm()
     semaphore = asyncio.Semaphore(CONCURRENCY)
     output_rankings = {}
 
     async def dispatch(i, batch):
         async with semaphore:
-            res = await run_rank_batch(llm_pool[i % len(llm_pool)], batch, f"Batch {i+1}")
+            res = await run_rank_batch(llm, batch, f"Batch {i+1}")
             for r in res:
                 output_rankings[r["ticker"]] = r["articles"]
             print(f"  ✓ Processed batch {i+1}/{len(batches)}")
