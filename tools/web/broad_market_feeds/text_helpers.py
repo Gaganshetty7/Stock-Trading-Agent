@@ -90,3 +90,23 @@ def extract_summary(entry) -> str:
     raw = getattr(entry, "description", getattr(entry, "summary", "")) or ""
     cleaned = clean_text(raw)
     return cleaned[:MAX_SUMMARY_LEN]
+
+def extract_real_url(entry) -> str:
+    """
+    Google News RSS embeds the real publisher URL inside the <description> HTML.
+    The description looks like:
+      <a href="https://real-article.com/...">Title</a> &nbsp;&ndash;&nbsp; Source Name
+    We extract the first href that is NOT a google.com domain.
+    Falls back to entry.link (the Google News redirect URL) if not found.
+    """
+    raw_summary = getattr(entry, "summary", getattr(entry, "description", "")) or ""
+    hrefs = re.findall(r'href=["\']([^"\']+)["\']', str(raw_summary))
+    for href in hrefs:
+        decoded = html.unescape(href)
+        if "google.com" not in decoded and decoded.startswith("http"):
+            return decoded
+    for lnk in getattr(entry, "links", []):
+        url = lnk.get("href", "")
+        if url and "google.com" not in url and url.startswith("http"):
+            return url
+    return getattr(entry, "link", "") or ""

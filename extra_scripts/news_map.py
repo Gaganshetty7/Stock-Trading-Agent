@@ -68,13 +68,12 @@ def main():
                     "company_insights": []
                 }
 
-            mapped_news[ticker]["company_insights"].append({
-                "title": article.get("title"),
-                "source": article.get("source"),
-                "link": article.get("url"),
-                "published_date": article.get("published"),
-                "age": article.get("age")
-            })
+            insight = article.copy()
+            # Ranker specific flags
+            insight["content_fetched"] = (article.get("intelligence_type") == "DEEP_BROWSER")
+            insight["published_date"] = article.get("published")
+            
+            mapped_news[ticker]["company_insights"].append(insight)
 
     with open(OUTPUT_FILE, "w", encoding="utf-8") as file:
         json.dump(mapped_news, file, indent=2, ensure_ascii=False)

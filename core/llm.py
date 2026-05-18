@@ -2,13 +2,13 @@ from langchain_core.language_models import BaseChatModel
 from config.settings import LLM_PROVIDER, LLM_MODEL, LLM_TEMPERATURE
 
 
-def get_llm() -> BaseChatModel:
+def get_llm(model: str = None, temperature: float = None) -> BaseChatModel:
     if LLM_PROVIDER == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
         from config.settings import GEMINI_API_KEY
         return ChatGoogleGenerativeAI(
-            model=LLM_MODEL,
-            temperature=LLM_TEMPERATURE,
+            model=model or LLM_MODEL,
+            temperature=temperature if temperature is not None else LLM_TEMPERATURE,
             google_api_key=GEMINI_API_KEY,
         )
 

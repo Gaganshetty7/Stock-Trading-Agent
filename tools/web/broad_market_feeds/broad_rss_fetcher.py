@@ -13,7 +13,7 @@ from .queries import FINAL_MASTER_QUERY_LIST
 from .text_helpers import (
     IST, _DT_MIN, clean_text, get_headers, 
     get_published_dt, human_age, extract_summary,
-    MAX_SUMMARY_LEN
+    extract_real_url, MAX_SUMMARY_LEN
 )
 from .deduplication import deduplicate
 
@@ -95,7 +95,8 @@ async def _fetch_query(
             "title":     title,
             "source":    source,
             "summary":   summary,
-            "url":       getattr(entry, "link", "") or "",
+            "link":      extract_real_url(entry),
+            "gn_url":    getattr(entry, "link", "") or "",
             "age":       human_age(pub_dt),
             "age_h":     round(hours_old, 2),
             "published": (

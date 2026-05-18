@@ -8,15 +8,16 @@ def deduplicate(articles: list[dict]) -> list[dict]:
     unique:      list[dict] = []
 
     for art in articles:
-        if art["url"] and art["url"] in seen_urls:
+        link = art.get("link", "")
+        if link and link in seen_urls:
             continue
         if any(
             fuzz.token_set_ratio(art["title"], t) >= DEDUP_SIMILARITY
             for t in seen_titles
         ):
             continue
-        if art["url"]:
-            seen_urls.add(art["url"])
+        if link:
+            seen_urls.add(link)
         seen_titles.append(art["title"])
         unique.append(art)
 
