@@ -12,10 +12,10 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 load_dotenv()
 
 # -- Config --
-MODEL = "gemini-1.5-flash-8b"
-BATCH_SIZE = 15
-CONCURRENCY = 10
-MAX_RETRIES = 3
+MODEL = "gemini-2.5-flash"
+BATCH_SIZE = 100
+CONCURRENCY = 1
+MAX_RETRIES = 5
 
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
@@ -41,11 +41,16 @@ CRITERIA:
    - > 60 mins: Low priority (usually already reflected in price unless massive surprise).
 3. Noise: Ignore generic analyst target price changes (unless major upgrade/downgrade), general sector talk, or standard marketing news.
 
-Rank each article from 0 to 10:
-- 10: Just hit the tape (<5m old) AND massive catalyst (e.g. Q4 results beat).
-- 7-9: High impact within last 30m.
-- 5-6: Significant but 1h+ old or slightly less impactful catalyst.
-- 0-4: Noise, education, or stale news.
+Rank each article from 0 to 10 for impact, but focus on Confidence score (0.0 to 1.0).
+- 10 impact: Just hit the tape (<5m old) AND massive catalyst (e.g. Q4 results beat).
+- 7-9 impact: High impact within last 30m.
+- 5-6 impact: Significant but 1h+ old or slightly less impactful catalyst.
+- 0-4 impact: Noise, education, or stale news.
+
+For Confidence (0.0 to 1.0):
+- 0.9+: High certainty of direct company impact.
+- 0.75-0.89: Probable impact but needs confirmation.
+- < 0.75: Low certainty or generic news.
 
 Return ONLY a JSON object in this format:
 {{
@@ -53,7 +58,7 @@ Return ONLY a JSON object in this format:
     {{
       "ticker": "TICKER",
       "articles": [
-        {{ "index": 1, "score": 8 }},
+        {{ "index": 1, "score": 8, "confidence": 0.92, "sentiment": "Bullish", "impact_summary": "Short-term positive on Q4 beat" }},
         ...
       ]
     }}
@@ -79,7 +84,7 @@ async def run_rank_batch(llm, batch: List[Dict], batch_label: str) -> List[Dict]
         try:
             resp = await asyncio.wait_for(
                 llm.ainvoke([HumanMessage(content=prompt)]),
-                timeout=45,
+                timeout=300,
             )
             text = resp.content
             if isinstance(text, list):
@@ -164,16 +169,22 @@ async def rank_news_payload(mapped_news: Dict) -> Dict:
         has_market_moving = False
         refined_insights = []
 
-        # Map scores to articles
+        # Map rankings to articles
         for r in ranks:
             idx = r.get("index", 1) - 1
             if 0 <= idx < len(insights):
                 score = r.get("score", 0)
+                confidence = r.get("confidence", 0.0)
                 art = insights[idx]
                 
-                if score >= SCORE_THRESHOLD:
-                    # Filter to only keep desired fields
+                # STRICT FILTER per user request: Confidence >= 0.75
+                if confidence >= 0.75:
+                    # Filter to only keep desired fields (NO SCORE per user request)
                     trimmed_art = {k: v for k, v in art.items() if k in KEEP_FIELDS}
+                    trimmed_art["confidence"] = confidence
+                    trimmed_art["sentiment"] = r.get("sentiment", "Neutral")
+                    trimmed_art["impact_summary"] = r.get("impact_summary", "")
+                    
                     refined_insights.append(trimmed_art)
                     has_market_moving = True
 
