@@ -48,5 +48,5 @@ def init_tools() -> None:
         fetch_broad_market_rss,
         "Performs a comprehensive sweep of the Indian stock market (NSE/BSE) using a "
         "wide query grid covering sectors, corporate events, and high-signal news. "
-        "Input: max_age_hours (int, default 72). Returns a deduplicated list of articles.",
+        "Input: max_age_hours (int, default 3). Returns a deduplicated list of articles.",
     )
