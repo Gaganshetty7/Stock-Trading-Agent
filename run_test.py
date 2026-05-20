@@ -2,54 +2,55 @@ import asyncio
 import time
 import json
 import os
-import glob
 from datetime import datetime
 from pathlib import Path
 import pytz
 
-async def run_pipeline():
+async def run_pipeline(max_batches: int = 0):
     ist = pytz.timezone("Asia/Kolkata")
     start_time = time.perf_counter()
     
-    print("\n" + "="*60)
-    print("🚀 STARTING STOCK INTELLIGENCE PIPELINE (Hardened Flow)")
-    print("="*60)
+    print("\n" + "=" * 60)
+    print("🚀 STOCK INTELLIGENCE PIPELINE")
+    print("=" * 60)
 
     # 1. FETCH & MAP STAGE
-    # Based on the current broad_rss_fetcher.py, it does both fetching and mapping.
     print("[STAGE 1] Fetching & Mapping Broad Market News...")
     from tools.web.broad_market_feeds.broad_rss_fetcher import fetch_broad_market_rss
-    payload = await fetch_broad_market_rss(max_age_hours=24)
+    payload = await fetch_broad_market_rss(max_age_hours=3)
     
-    # 2. SELECTION FOR RANKING
     print(f"  ✓ Fetched {payload['metadata']['total_articles']} articles")
     print(f"  ✓ Mapped to {payload['metadata']['total_companies']} companies")
 
-    # 3. RANKING STAGE
-    print("[STAGE 2] Running Production-Hardened Pre-Ranker...")
-    from tools.web.pre_ranker import rank_news_payload
-    final_payload = await rank_news_payload(payload["mapped_news"])
+    # 2. INTRADAY SIGNAL EXTRACTION
+    print("[STAGE 2] Running Intraday Signal Extraction...")
+    from tools.web.broad_market_feeds.ranker.pre_ranker import rank_news_payload
+    final_payload = await rank_news_payload(payload, max_batches=max_batches)
     
     # SAVE FINAL RESULT
     timestamp = datetime.now(ist).strftime("%Y%m%d_%H%M%S")
-    output_file = Path("outputs") / f"final_pre_ranked_{timestamp}.json"
+    output_file = Path("outputs") / f"signals_{timestamp}.json"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(final_payload, f, indent=2, ensure_ascii=False)
 
     elapsed = time.perf_counter() - start_time
-    # Use fallback count to calculate success rate
-    input_count = final_payload['metadata']['total_companies_input']
-    fallback_count = final_payload['metadata'].get('fallback_used_count', 0)
-    success_rate = round(((input_count - fallback_count) / input_count) * 100, 2) if input_count > 0 else 0
-
-    print("\n" + "="*60)
+    
+    meta = final_payload["metadata"]
+    signals = final_payload["signals"]
+    
+    print("\n" + "=" * 60)
     print(f"✅ PIPELINE COMPLETE IN {elapsed:.2f}s")
-    print(f"📊 COMPANIES OUTPUT: {final_payload['metadata']['total_companies_output']}")
-    print(f"📈 SUCCESS RATE: {success_rate}%")
-    print(f"📂 SAVED TO: {output_file}")
-    print("="*60)
+    print(f"📊 Companies with signals: {meta['companies_with_signal']}")
+    print(f"🗑️  Companies removed (noise): {meta['companies_removed']}")
+    print(f"📰 Total articles kept: {meta['total_articles_kept']}")
+    print(f"📂 Saved to: {output_file}")
+    print("=" * 60)
 
 if __name__ == "__main__":
-    asyncio.run(run_pipeline())
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--batches", type=int, default=0, help="Limit batches (0=all)")
+    args = parser.parse_args()
+    asyncio.run(run_pipeline(max_batches=args.batches))
