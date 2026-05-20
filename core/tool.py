@@ -1,23 +1,27 @@
-from typing import Any, Callable, Coroutine
-
-AsyncTool = Callable[..., Coroutine[Any, Any, Any]]
+from langchain_core.tools import BaseTool
+from tools.storage.file_writer import write_json
+from tools.web.broad_market_feeds.broad_rss_fetcher import fetch_broad_market_rss
 
 # ── Registry ──────────────────────────────────────────────────────────────────
-_TOOLS: dict[str, dict] = {}
+_TOOLS: dict[str, BaseTool] = {}
 
 
-def register_tool(name: str, fn: AsyncTool, description: str) -> None:
-    """Registers a tool safely. Prevents duplicate registration."""
-    if name in _TOOLS:
-        return
-    _TOOLS[name] = {"fn": fn, "description": description}
+def init_tools() -> None:
+    """Initializes and registers all native LangChain tools."""
+    _TOOLS["write_json"] = write_json
+    _TOOLS["fetch_broad_market_rss"] = fetch_broad_market_rss
 
 
-def get_tool(name: str) -> AsyncTool:
-    """Fetches a registered tool by name."""
+def get_tool(name: str) -> BaseTool:
+    """Fetches a registered LangChain BaseTool by name."""
     if name not in _TOOLS:
         raise KeyError(f"Tool '{name}' not found. Available: {list(_TOOLS.keys())}")
-    return _TOOLS[name]["fn"]
+    return _TOOLS[name]
+
+
+def get_tools_by_names(names: list[str]) -> list[BaseTool]:
+    """Returns a list of BaseTool objects matching the provided names."""
+    return [get_tool(name) for name in names]
 
 
 def describe_tools(names: list[str]) -> str:
@@ -25,28 +29,6 @@ def describe_tools(names: list[str]) -> str:
     lines = []
     for name in names:
         if name in _TOOLS:
-            lines.append(f"- **{name}**: {_TOOLS[name]['description']}")
+            tool = _TOOLS[name]
+            lines.append(f"- **{tool.name}**: {tool.description}")
     return "\n".join(lines)
-
-
-# ── Tool Initialization ───────────────────────────────────────────────────────
-from tools.storage.file_writer import write_json
-from tools.web.broad_market_feeds.broad_rss_fetcher import fetch_broad_market_rss
-
-
-def init_tools() -> None:
-    """Call this ONCE at application startup."""
-    register_tool(
-        "write_json",
-        write_json,
-        "Writes structured data as a JSON file to the outputs directory. "
-        "Input: filename_prefix (str), data (dict | list), overwrite (bool, default False). "
-        "Set overwrite=True to maintain a single file per stock.",
-    )
-    register_tool(
-        "fetch_broad_market_rss",
-        fetch_broad_market_rss,
-        "Performs a comprehensive sweep of the Indian stock market (NSE/BSE) using a "
-        "wide query grid covering sectors, corporate events, and high-signal news. "
-        "Input: max_age_hours (int, default 72). Returns a deduplicated list of articles.",
-    )

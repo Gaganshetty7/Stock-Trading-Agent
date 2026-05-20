@@ -1,9 +1,12 @@
 import json
 import uuid
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Annotated, Any, Sequence
+from typing_extensions import TypedDict
 
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
 from core.llm import get_llm
@@ -19,7 +22,15 @@ class ReActStep(BaseModel):
     thought: str
     action: str
     action_input: dict[str, Any] | None = Field(None, description="Input for the tool action.")
-    final_output: dict[str, Any] | None = Field(None, description="The final result to return when action is 'FINISH'. For NewsAgent, this must include the 'signals' list.")
+    final_output: dict[str, Any] | None = Field(None, description="The final result to return when action is 'FINISH'.")
+
+
+# ── LangGraph State ──────────────────────────────────────────────────────────
+class AgentState(TypedDict):
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+    latest_step: ReActStep | None
+    final_output: dict[str, Any]
+    error: str | None
 
 
 class BaseAgent(ABC):
@@ -28,6 +39,7 @@ class BaseAgent(ABC):
         self.llm = get_llm()
         self.logger = get_logger(self.name)
         self._system_prompt: str | None = None
+        self._graph = self._compile_graph()
 
     @property
     @abstractmethod
@@ -61,54 +73,118 @@ class BaseAgent(ABC):
         )
         return self._system_prompt
 
-    async def run(self, task: dict[str, Any]) -> dict[str, Any]:
-        run_id = str(uuid.uuid4())[:8]
-        log_info(self.name, f"Starting run [{run_id}]")
+    def _compile_graph(self) -> StateGraph:
+        """Builds and compiles the LangGraph StateGraph representing the ReAct loop."""
+        workflow = StateGraph(AgentState)
 
+        # Define the nodes
+        workflow.add_node("agent", self._call_agent)
+        workflow.add_node("tools", self._execute_tool)
+
+        # Define flow edges
+        workflow.add_edge(START, "agent")
+        
+        # Define conditional edges
+        workflow.add_conditional_edges(
+            "agent",
+            self._should_continue,
+            {
+                "tools": "tools",
+                "finish": END,
+                "error": END
+            }
+        )
+        workflow.add_edge("tools", "agent")
+
+        return workflow.compile()
+
+    async def _call_agent(self, state: AgentState) -> dict[str, Any]:
+        """Node for executing the LLM and generating the next ReActStep."""
         structured_llm = self.llm.with_structured_output(ReActStep)
+        
+        # Build the current message list, including the dynamic system prompt
+        messages = [SystemMessage(content=self._build_system_prompt())] + list(state["messages"])
 
-        messages = [
-            SystemMessage(content=self._build_system_prompt()),
-            HumanMessage(content=json.dumps(task)),
-        ]
-
-        for iteration in range(MAX_REACT_ITERATIONS):
-            log_info(self.name, f"Iteration {iteration + 1}")
-
-            try:
-                step: ReActStep = await structured_llm.ainvoke(messages)
-            except Exception as e:
-                log_error(self.name, f"LLM call failed: {e}")
-                return {"status": "failed", "error": str(e)}
-
+        try:
+            step: ReActStep = await structured_llm.ainvoke(messages)
             log_thought(self.name, step.thought)
             log_action(self.name, step.action, step.action_input or {})
+            
+            # Store the latest step and append the LLM's response to the conversation
+            return {
+                "latest_step": step,
+                "messages": [AIMessage(content=step.model_dump_json())]
+            }
+        except Exception as e:
+            log_error(self.name, f"LLM invocation failed: {e}")
+            return {
+                "error": str(e),
+                "latest_step": None
+            }
 
-            if step.action == "FINISH":
-                final_output = step.final_output or step.action_input or {}
-                output = self.parse_output(final_output)
-                log_info(self.name, f"Run [{run_id}] completed.")
-                return {"status": "completed", "output": output}
+    async def _execute_tool(self, state: AgentState) -> dict[str, Any]:
+        """Node for calling tools based on the ReActStep action."""
+        step = state["latest_step"]
+        if not step:
+            return {"messages": [HumanMessage(content="ERROR: No active step to execute.")]}
 
-            observation = await self._call_tool(step.action, step.action_input or {})
-            log_observation(self.name, observation)
+        action_name = step.action
+        action_input = step.action_input or {}
 
-            messages.append(AIMessage(content=step.model_dump_json()))
-            messages.append(HumanMessage(content=f"Observation: {observation}"))
-
-        log_error(self.name, f"Run [{run_id}] hit max iterations.")
-        return {"status": "max_iterations", "error": "Max iterations reached"}
-
-    async def _call_tool(self, name: str, inputs: dict[str, Any]) -> str:
         try:
-            tool = get_tool(name)
-            result = await tool(**inputs)
+            tool = get_tool(action_name)
+            
+            # Since tools are LangChain BaseTools, call them asynchronously
+            result = await tool.ainvoke(action_input)
+            
             serialized = json.dumps(result) if not isinstance(result, str) else result
             if len(serialized) > MAX_OBSERVATION_LENGTH:
                 serialized = serialized[:MAX_OBSERVATION_LENGTH] + "\n...[truncated]"
-            return serialized
-        except KeyError as e:
-            return str(e)
+                
+            log_observation(self.name, serialized)
+            return {"messages": [HumanMessage(content=f"Observation: {serialized}")]}
         except Exception as e:
-            log_error(self.name, f"Tool '{name}' error: {e}")
-            return f"ERROR: {e}"
+            error_msg = f"ERROR executing tool '{action_name}': {e}"
+            log_error(self.name, error_msg)
+            return {"messages": [HumanMessage(content=error_msg)]}
+
+    def _should_continue(self, state: AgentState) -> str:
+        """Conditional routing logic for LangGraph."""
+        if state.get("error"):
+            return "error"
+            
+        step = state.get("latest_step")
+        if not step:
+            return "error"
+
+        if step.action == "FINISH":
+            return "finish"
+
+        return "tools"
+
+    async def run(self, task: dict[str, Any]) -> dict[str, Any]:
+        run_id = str(uuid.uuid4())[:8]
+        log_info(self.name, f"Starting LangGraph run [{run_id}]")
+
+        initial_state = {
+            "messages": [HumanMessage(content=json.dumps(task))],
+            "latest_step": None,
+            "final_output": {},
+            "error": None
+        }
+
+        # Run the graph asynchronously
+        final_state = await self._graph.ainvoke(initial_state)
+
+        if final_state.get("error"):
+            return {"status": "failed", "error": final_state["error"]}
+
+        step = final_state.get("latest_step")
+        if step and step.action == "FINISH":
+            final_output = step.final_output or step.action_input or {}
+            output = self.parse_output(final_output)
+            log_info(self.name, f"Run [{run_id}] completed successfully.")
+            return {"status": "completed", "output": output}
+
+        log_error(self.name, f"Run [{run_id}] ended unexpectedly without finishing.")
+        return {"status": "failed", "error": "Graph terminated without a FINISH action."}

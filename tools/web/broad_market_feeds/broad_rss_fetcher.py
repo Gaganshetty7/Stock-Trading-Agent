@@ -21,6 +21,7 @@ from .deduplication import deduplicate
 from .news_mapper import map_news_to_tickers
 
 logger = get_logger("broad_market_rss_fetcher")
+from langchain_core.tools import tool
 
 # Configuration
 REQUEST_TIMEOUT        = 8
@@ -123,7 +124,16 @@ def _cleanup_legacy_files(outputs_dir: Path) -> None:
         except Exception as e:
             logger.warning(f"Failed to delete {legacy_mapped.name}: {e}")
 
+@tool
 async def fetch_broad_market_rss(max_age_hours: int = 6) -> dict:
+    """Performs a comprehensive sweep of the Indian stock market (NSE/BSE) using Google News RSS.
+
+    Args:
+        max_age_hours: Maximum age of articles in hours to retrieve (default 6).
+
+    Returns:
+        A dictionary containing deduplicated news articles mapped to tickers, and operational metadata.
+    """
     logger.info("=" * 60)
     logger.info("Starting broad market RSS sweep")
     logger.info(f"  Total queries:   {len(FINAL_MASTER_QUERY_LIST)}")

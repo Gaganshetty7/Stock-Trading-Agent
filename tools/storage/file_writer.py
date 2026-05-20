@@ -8,6 +8,9 @@ from core.logger import get_logger
 logger = get_logger("file_writer")
 
 
+from langchain_core.tools import tool
+
+@tool
 async def write_json(filename_prefix: str, data: dict | list, overwrite: bool = False) -> str:
     """
     Writes data as a JSON file to the outputs directory.
