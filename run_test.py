@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 import pytz
 
-async def run_pipeline(max_batches: int = 0):
+async def run_pipeline():
     ist = pytz.timezone("Asia/Kolkata")
     start_time = time.perf_counter()
     
@@ -25,7 +25,7 @@ async def run_pipeline(max_batches: int = 0):
     # 2. INTRADAY SIGNAL EXTRACTION
     print("[STAGE 2] Running Intraday Signal Extraction...")
     from tools.web.broad_market_feeds.ranker.pre_ranker import rank_news_payload
-    final_payload = await rank_news_payload(payload, max_batches=max_batches)
+    final_payload = await rank_news_payload(payload)
     
     # SAVE FINAL RESULT
     timestamp = datetime.now(ist).strftime("%Y%m%d_%H%M%S")
@@ -49,8 +49,4 @@ async def run_pipeline(max_batches: int = 0):
     print("=" * 60)
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--batches", type=int, default=0, help="Limit batches (0=all)")
-    args = parser.parse_args()
-    asyncio.run(run_pipeline(max_batches=args.batches))
+    asyncio.run(run_pipeline())
