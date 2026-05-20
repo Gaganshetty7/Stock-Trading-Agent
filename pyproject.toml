@@ -17,4 +17,5 @@ dependencies = [
     "pytz>=2026.2",
     "rapidfuzz>=3.14.5",
     "rich>=15.0.0",
+    "yfinance>=1.3.0",
 ]

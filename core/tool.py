@@ -30,19 +30,12 @@ def describe_tools(names: list[str]) -> str:
 
 
 # ── Tool Initialization ───────────────────────────────────────────────────────
-from tools.web.rss_reader import fetch_rss
 from tools.storage.file_writer import write_json
 from tools.web.broad_market_feeds.broad_rss_fetcher import fetch_broad_market_rss
 
 
 def init_tools() -> None:
     """Call this ONCE at application startup."""
-    register_tool(
-        "fetch_rss",
-        fetch_rss,
-        "Fetches and filters Google News RSS articles for a list of Indian stocks. "
-        "Input: stocks (list[str]), max_age_hours (int, default 48).",
-    )
     register_tool(
         "write_json",
         write_json,
