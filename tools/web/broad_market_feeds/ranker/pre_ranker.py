@@ -13,7 +13,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field, ValidationError
 
-from core.quota_tracker import log_api_usage, get_today_usage
+from core.quota_tracker import log_api_usage, get_today_usage, log_quota_attempt
 from config.ranking_config import (
     RANKING_MODEL,
     RANKING_BATCH_SIZE,
@@ -222,38 +222,59 @@ async def call_llm(prompt: str, metrics: PipelineMetrics) -> Optional[str]:
         metrics.api_calls_made += 1
         return response.text
     except Exception as e:
+        err_str = str(e)
         # Check for 429/Quota
-        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-            log_api_usage(GEMINI_RANKING_KEY, f"{RANKING_MODEL}|REJECTED_429", "REJECTED_429")
+        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+            log_api_usage(GEMINI_RANKING_KEY, RANKING_MODEL, "REJECTED_429")
             raise QuotaError("Quota hit")
+        
+        # Check for 403/Key revoked
+        if "403" in err_str or "PERMISSION_DENIED" in err_str:
+            log_api_usage(GEMINI_RANKING_KEY, RANKING_MODEL, "REJECTED_403_KEY_REVOKED")
+            print(f"  [FATAL] API Key revoked/leaked. Get a new key.")
+            return None
         
         print(f"  [LLM Error] {e}")
         return None
 
 
-async def rank_news_payload(payload: Dict) -> Dict:
+async def rank_news_payload(payload: Dict, max_batches: Optional[int] = None) -> Dict:
     """Main entry point: Batches mapped news and extracts tradable signals."""
     metrics = PipelineMetrics()
     mapped = payload.get("mapped_news", {})
     all_tickers = list(mapped.keys())
+    # Calculate total articles and sort tickers by news presence
     metrics.total_companies = len(all_tickers)
+    tickers_with_news = []
+    tickers_without_news = []
     
-    # Calculate total articles for telemetry
     for t in all_tickers:
-        metrics.total_articles_in += len(mapped[t].get("company_insights", []))
+        article_count = len(mapped[t].get("company_insights", []))
+        metrics.total_articles_in += article_count
+        if article_count > 0:
+            tickers_with_news.append(t)
+        else:
+            tickers_without_news.append(t)
+            
+    # Sort for optimal batching (news-first)
+    all_tickers = tickers_with_news + tickers_without_news
 
     # Batching logic
     batches = [all_tickers[i:i + RANKING_BATCH_SIZE] for i in range(0, len(all_tickers), RANKING_BATCH_SIZE)]
+    if max_batches:
+        batches = batches[:max_batches]
+        print(f"[TEST MODE] Limited to {max_batches} batch(es)")
 
     final_output = {}
     skipped_batches = []
 
-    async def run_batch(batch_tickers: List[str], i: int):
+    async def run_batch(batch_tickers: List[str], i: int, data_source: Dict, m: PipelineMetrics):
         # Format input for LLM
         truncated_payload = []
         for t in batch_tickers:
-            company_data = mapped[t]
+            company_data = data_source.get(t, {})
             insights = company_data.get("company_insights", [])
+            
             for art in insights[:3]:  # Top 3 headlines per company
                 truncated_payload.append({
                     "ticker": t,
@@ -262,25 +283,28 @@ async def rank_news_payload(payload: Dict) -> Dict:
                     "age": art.get('age', 'stale')
                 })
 
+        if not truncated_payload:
+            return None, None, "skipped (no recent news)"
+
         prompt = RANK_PROMPT.format(
             current_time=datetime.now(timezone.utc).strftime("%I:%M %p UTC"),
             payload=json.dumps(truncated_payload, indent=1)
         )
 
         try:
-            raw_response = await call_llm(prompt, metrics)
+            raw_response = await call_llm(prompt, m)
             if not raw_response:
-                return None, None, "error"
+                return None, None, "error (LLM empty)"
             
             clean_json = robust_json_parser(raw_response)
             if not clean_json:
-                metrics.parse_failures += 1
+                m.parse_failures += 1
                 return None, None, "parse_fail"
 
             validated = BatchResponse(**clean_json)
             return raw_response, validated, "success"
         except QuotaError:
-            metrics.quota_skipped += 1
+            m.quota_skipped += 1
             return None, None, "quota_skipped"
         except Exception as e:
             print(f"  [Batch {i+1} Error] {e}")
@@ -292,8 +316,8 @@ async def rank_news_payload(payload: Dict) -> Dict:
 
     for i, batch_tickers in enumerate(batches):
         print(f"  [Batch {i+1}/{len(batches)}] {batch_tickers[:3]}{'...' if len(batch_tickers)>3 else ''}")
-        batch_data = {t: mapped[t] for t in batch_tickers}
-        ts, validated, status = await run_batch(batch_tickers, i)
+        log_quota_attempt(RANKING_MODEL, "START")
+        ts, validated, status = await run_batch(batch_tickers, i, mapped, metrics)
 
         # Print live quota status
         usage = get_today_usage()
@@ -344,7 +368,7 @@ async def rank_news_payload(payload: Dict) -> Dict:
         await asyncio.sleep(60)
         # Note: In production we'd use a more robust loop here, but this preserves the logic requested.
         for i, batch_tickers in enumerate(skipped_batches):
-             _, validated, status = await run_batch(batch_tickers, 99)
+             _, validated, status = await run_batch(batch_tickers, 99, mapped, metrics)
              # (Processing logic same as above omitted for brevity in final prod version unless requested)
 
     # Final Telemetry

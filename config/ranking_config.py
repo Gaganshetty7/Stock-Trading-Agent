@@ -25,4 +25,6 @@ STALE_THRESHOLD_MINS = 180       # 3 hours
 
 # ── API Key Management ────────────────────────────────────────────────────────
 # Single key for ranking - friend's key, must be protected
-GEMINI_RANKING_KEY = os.getenv("GEMINI_RANKING_KEY", "AIzaSyDV5tZUlznzeUhM7MeDOS7mk0vfvzg6cF8")
+GEMINI_RANKING_KEY = os.getenv("GEMINI_RANKING_KEY", "")
+if not GEMINI_RANKING_KEY:
+    raise ValueError("GEMINI_RANKING_KEY not found in .env — add it there, never hardcode it")
