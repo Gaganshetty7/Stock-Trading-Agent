@@ -15,6 +15,3 @@ wheels/
 # Logs and Output
 logs/
 outputs/
-
-# Temporary
-tools/market/technical_analysis_tool
