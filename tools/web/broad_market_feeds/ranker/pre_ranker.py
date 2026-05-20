@@ -238,7 +238,7 @@ async def call_llm(prompt: str, metrics: PipelineMetrics) -> Optional[str]:
         return None
 
 
-async def rank_news_payload(payload: Dict, max_batches: Optional[int] = None) -> Dict:
+async def rank_news_payload(payload: Dict) -> Dict:
     """Main entry point: Batches mapped news and extracts tradable signals."""
     metrics = PipelineMetrics()
     mapped = payload.get("mapped_news", {})
@@ -261,9 +261,6 @@ async def rank_news_payload(payload: Dict, max_batches: Optional[int] = None) ->
 
     # Batching logic
     batches = [all_tickers[i:i + RANKING_BATCH_SIZE] for i in range(0, len(all_tickers), RANKING_BATCH_SIZE)]
-    if max_batches:
-        batches = batches[:max_batches]
-        print(f"[TEST MODE] Limited to {max_batches} batch(es)")
 
     final_output = {}
     skipped_batches = []
@@ -337,6 +334,9 @@ async def rank_news_payload(payload: Dict, max_batches: Optional[int] = None) ->
                 age_mins = parse_age_to_mins(article.age)
                 if age_mins > STALE_THRESHOLD_MINS:
                     article.confidence *= STALE_DECAY_MULTIPLIER
+                
+                # Round to exactly 2 decimal places
+                article.confidence = round(article.confidence, 2)
                 
                 # Final filtering
                 if article.confidence >= MIN_CONFIDENCE:
