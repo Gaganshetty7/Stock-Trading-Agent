@@ -272,7 +272,7 @@ async def rank_news_payload(payload: Dict) -> Dict:
             company_data = data_source.get(t, {})
             insights = company_data.get("company_insights", [])
             
-            for art in insights[:3]:  # Top 3 headlines per company
+            for art in insights:  # Send all headlines, LLM will decide
                 truncated_payload.append({
                     "ticker": t,
                     "title": truncate(art['title'], MAX_TITLE_LEN),
