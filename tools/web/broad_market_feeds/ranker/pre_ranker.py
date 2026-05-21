@@ -172,28 +172,39 @@ def parse_age_to_mins(age_str: str) -> int:
 
 
 # ── LLM Prompt ────────────────────────────────────────────────────────────────
-RANK_PROMPT = """You are an intraday trading intelligence system for Indian equities (NSE/BSE).
+RANK_PROMPT = """You are an intraday trading intelligence system for Indian equities.
+Current UTC Time: {current_time}
 
-### TASK
-Analyze headlines for a batch of companies and identify ONLY actionable, market-moving catalysts (Earnings, Profits, Massive Orders, Mergers, Policy Impact).
+TASK:
+Identify ONLY company-specific, market-moving catalysts from the input.
 
-### RULES
-1. IGNORE generic market noise (e.g., 'stocks to watch', 'Nifty analysis', 'expert tips').
-2. PRIORITIZE freshness: Current time is {current_time}. News from minutes ago is 1.0 confidence, hours ago is lower.
-3. OUTPUT minimal JSON format as shown below.
+KEEP:
+* earnings/results, mergers/acquisitions, major orders/contracts
+* stake sales/buying, block deals, regulatory actions
+* project wins/cancellations, fundraising, buybacks/dividends
+* index inclusion/exclusion
 
-### INPUT DATA
+IGNORE:
+* stocks to watch, market commentary, analyst opinions
+* technical analysis, broad market news, generic recommendations
+
+DEDUP RULE:
+If multiple headlines describe the same event, return ONLY the earliest or most information-rich article.
+
+Confidence (0.0-1.0): Reflect market impact, freshness, and actionability.
+
+INPUT:
 {payload}
 
-### OUTPUT FORMAT (JSON ONLY)
+OUTPUT (STRICT JSON ONLY):
 {{
   "results": [
     {{
-      "ticker": "RELIANCE",
-      "title": "Reliance Q4 profit beats estimates, rises 18% YoY",
-      "url": "...",        // System will auto-populate this from source
-      "published": "...",  // System will auto-populate this from source
-      "age": "15m ago",
+      "ticker": "...",
+      "title": "...",
+      "url": "...",
+      "published": "...",
+      "age": "...",
       "confidence": 0.95
     }}
   ]
