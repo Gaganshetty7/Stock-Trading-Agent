@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from config.settings import OUTPUTS_DIR
@@ -18,7 +18,8 @@ async def write_json(filename_prefix: str, data: dict | list, overwrite: bool = 
     if overwrite:
         filename = f"{filename_prefix}.json"
     else:
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        IST = timezone(timedelta(hours=5, minutes=30))
+        timestamp = datetime.now(IST).strftime("%Y%m%d_%H%M%S")
         filename = f"{filename_prefix}_{timestamp}.json"
     
     filepath = Path(OUTPUTS_DIR) / filename

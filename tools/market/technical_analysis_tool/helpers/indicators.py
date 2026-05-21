@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 
 # =========================================================
-# STOCK INDICATORS MODULE
+# INDICATORS
 # =========================================================
-# Contains indicator calculation and stock processing logic.
-# This module is imported by stock_pipeline.py.
+# Pure calculation helpers: RSI, VWAP, MA, pivot levels.
+# Used internally by tool.py — do not import directly in agents.
 # =========================================================
 
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
-from tools.market.technical_analysis_tool.stock_settings import MA_PERIOD
+IST = timezone(timedelta(hours=5, minutes=30))
+
+from tools.market.technical_analysis_tool.helpers.settings import MA_PERIOD
 
 
 def calculate_rsi(data, period=14):
@@ -68,17 +70,17 @@ def process_stock(ticker, data, data_5m):
         typical_price        = (data["High"] + data["Low"] + data["Close"]) / 3
         cumulative_tp_volume = (typical_price * data["Volume"]).cumsum()
         cumulative_volume    = data["Volume"].cumsum()
-        data["VWAP"]        = cumulative_tp_volume / cumulative_volume
-        vwap                  = float(data["VWAP"].iloc[-2])
+        data["VWAP"]         = cumulative_tp_volume / cumulative_volume
+        vwap                 = float(data["VWAP"].iloc[-2])
 
         # ----- RSI -----
         rsi_1m = calculate_rsi(data)
         rsi_5m = calculate_rsi(data_5m)
 
         # ----- Volume -----
-        total_volume   = int(data["Volume"].sum())
-        last_volume    = int(data["Volume"].iloc[-2])
-        average_volume = float(data["Volume"].iloc[-21:-1].mean())
+        total_volume    = int(data["Volume"].sum())
+        last_volume     = int(data["Volume"].iloc[-2])
+        average_volume  = float(data["Volume"].iloc[-21:-1].mean())
         volume_strength = (last_volume / average_volume) if average_volume != 0 else 0
 
         # ----- Trend -----
@@ -88,7 +90,7 @@ def process_stock(ticker, data, data_5m):
 
         return {
             "stock"     : ticker,
-            "timestamp" : datetime.now().isoformat(),
+            "timestamp" : datetime.now(IST).isoformat(),
             "status"    : "ok",
             "market_data": {
                 "current_price" : round(current_price, 2),
@@ -122,5 +124,5 @@ def process_stock(ticker, data, data_5m):
             "stock"    : ticker,
             "status"   : "error",
             "message"  : str(e),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now(IST).isoformat()
         }

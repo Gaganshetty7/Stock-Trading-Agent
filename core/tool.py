@@ -32,7 +32,7 @@ def describe_tools(names: list[str]) -> str:
 # ── Tool Initialization ───────────────────────────────────────────────────────
 from tools.storage.file_writer import write_json
 from tools.web.broad_market_feeds.broad_rss_fetcher import fetch_broad_market_rss
-
+from tools.market.technical_analysis_tool.tool import fetch_and_save_technicals
 
 def init_tools() -> None:
     """Call this ONCE at application startup."""
@@ -49,4 +49,10 @@ def init_tools() -> None:
         "Performs a comprehensive sweep of the Indian stock market (NSE/BSE) using a "
         "wide query grid covering sectors, corporate events, and high-signal news. "
         "Input: max_age_hours (int, default 72). Returns a deduplicated list of articles.",
+    )
+    register_tool(
+        "fetch_and_save_technicals",
+        fetch_and_save_technicals,
+        "Fetches technical analysis for a list of stock tickers in a single batch and saves it directly to disk. "
+        "Input: tickers (list of str). Returns the filepath where the technical indicators were saved."
     )
