@@ -13,8 +13,8 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field, ValidationError
 
-from core.quota_tracker import log_api_usage, get_today_usage, log_quota_attempt
-from config.ranking_config import (
+from .quota_tracker import log_api_usage, get_today_usage, log_quota_attempt
+from .ranking_config import (
     RANKING_MODEL,
     RANKING_BATCH_SIZE,
     RANKING_CONCURRENCY,
@@ -187,9 +187,10 @@ async def rank_news_payload(payload: Dict) -> Dict:
                 
                 # Round to exactly 2 decimal places
                 article.confidence = round(article.confidence, 2)
-                
+                article.impact_score = round(article.impact_score, 2)
+
                 # Final filtering
-                if article.confidence >= MIN_CONFIDENCE:
+                if article.confidence >= MIN_CONFIDENCE and article.impact_score >= 0.4:
                     # RE-ASSOCIATE URL AND PUBLISHED
                     if tk in mapped and "company_insights" in mapped[tk]:
                         for original in mapped[tk]["company_insights"]:
