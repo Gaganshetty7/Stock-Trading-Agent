@@ -194,7 +194,7 @@ async def rank_news_payload(payload: Dict) -> Dict:
     print(f"  {msg_model}")
     logger.info(msg_model)
 
-    for i, batch_tickers in enumerate(batches[:1]):
+    for i, batch_tickers in enumerate(batches):
         print(f"  [Batch {i+1}/{len(batches)}] {batch_tickers[:3]}{'...' if len(batch_tickers)>3 else ''}")
         log_quota_attempt(RANKING_MODEL, "START")
         ts, validated, status = await run_batch(batch_tickers, i, mapped, metrics)
