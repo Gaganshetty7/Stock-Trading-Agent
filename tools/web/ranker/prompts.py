@@ -41,7 +41,7 @@ SCORING RULES:
 3. trend:
 - bullish = positive price reaction expected
 - bearish = negative price reaction expected
-- neutral = no clear directional bias
+- sideways  = no clear directional bias
 
 IMPORTANT:
 - bearish news is equally important as bullish news

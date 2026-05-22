@@ -35,6 +35,8 @@ from .utils import QuotaError, robust_json_parser, truncate, logger
 from .helpers import is_market_open, parse_age_to_mins
 from .prompts import RANK_PROMPT
 from .metrics import PipelineMetrics
+from .token_tracker import extract_context_usage
+from .token_tracker import log_token_usage
 
 load_dotenv()
 
@@ -56,6 +58,40 @@ async def call_llm(prompt: str, metrics: PipelineMetrics) -> Optional[str]:
             ),
             timeout=RANKING_TIMEOUT,
         )
+        
+        usage = getattr(response, "usage_metadata", None)
+
+        stats = None  # IMPORTANT: always define
+
+        if usage:
+            stats = extract_context_usage(RANKING_MODEL, usage)
+
+            # log token usage safely
+            log_token_usage(
+                model=RANKING_MODEL,
+                prompt_tokens=stats["input_tokens"],
+                completion_tokens=stats["output_tokens"],
+                thought_tokens=stats.get("thought_tokens", 0),
+                total_tokens=stats["total_tokens"],
+                context_limit=stats["context_limit"],
+            )
+
+            # ── SAFE PRINT (NO CRASH EVER) ─────────────────────────
+            print("\n========== GEMINI TOKEN USAGE ==========")
+
+            if stats:
+                print(f"Model          : {stats['model']}")
+                print(f"Input Tokens   : {stats['input_tokens']}")
+                print(f"Output Tokens  : {stats['output_tokens']}")
+                print(f"Thought Tokens : {stats.get('thought_tokens', 0)}")
+                print(f"Total Tokens   : {stats['total_tokens']}")
+                print(f"Context Limit  : {stats['context_limit']}")
+                print(f"Remaining      : {stats['remaining_tokens']}")
+            else:
+                print("No usage metadata returned from Gemini API")
+
+            print("========================================\n")
+
         metrics.latencies.append(time.time() - start)
         
         # Log successful hit
@@ -158,7 +194,7 @@ async def rank_news_payload(payload: Dict) -> Dict:
     print(f"  {msg_model}")
     logger.info(msg_model)
 
-    for i, batch_tickers in enumerate(batches):
+    for i, batch_tickers in enumerate(batches[:1]):
         print(f"  [Batch {i+1}/{len(batches)}] {batch_tickers[:3]}{'...' if len(batch_tickers)>3 else ''}")
         log_quota_attempt(RANKING_MODEL, "START")
         ts, validated, status = await run_batch(batch_tickers, i, mapped, metrics)

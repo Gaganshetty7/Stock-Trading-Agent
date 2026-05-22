@@ -2,7 +2,7 @@ from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 
 
-Trend = Literal["bullish", "bearish", "neutral"]
+Trend = Literal["bullish", "bearish", "sideways"]
 
 
 class ScoredArticle(BaseModel):
