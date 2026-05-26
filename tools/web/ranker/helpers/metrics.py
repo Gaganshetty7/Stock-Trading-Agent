@@ -62,5 +62,6 @@ class PipelineMetrics:
         lines.append("=" * 50 + "\n")
         
         output = "\n".join(lines)
-        print(output)
+        # Only log to file, no terminal print as requested
         logger.info(output)
+

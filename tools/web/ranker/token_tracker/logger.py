@@ -3,7 +3,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
 
-LOG_FILE = Path("logs/token_usage.jsonl")
+LOG_FILE = Path("logs/token_usage/token_usage.jsonl")
+
 
 
 def log_token_usage(
@@ -34,4 +35,5 @@ def log_token_usage(
     }
 
     with open(LOG_FILE, "a") as f:
-        f.write(json.dumps(entry) + "\n")
+        f.write(json.dumps(entry, indent=4) + "\n\n\n")
+

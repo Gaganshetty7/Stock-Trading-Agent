@@ -18,18 +18,19 @@ async def run_pipeline():
     print("[STAGE 1] Fetching & Mapping Broad Market News...")
     from tools.web.broad_market_feeds.broad_rss_fetcher import fetch_broad_market_rss
     payload = await fetch_broad_market_rss(max_age_hours=6)
-    
-    print(f"  [OK] Fetched {payload['metadata']['total_articles']} articles")
-    print(f"  [OK] Mapped to {payload['metadata']['total_companies']} companies")
 
     # 2. INTRADAY SIGNAL EXTRACTION
     print("[STAGE 2] Running Intraday Signal Extraction...")
-    from tools.web.ranker.pre_ranker import rank_news_payload
+    from tools.web.ranker.tool import rank_news_payload
+
     final_payload = await rank_news_payload(payload)
     
     # SAVE FINAL RESULT
     timestamp = datetime.now(ist).strftime("%Y%m%d_%H%M%S")
-    output_file = Path("outputs") / f"signals_{timestamp}.json"
+    output_dir = Path("outputs/ranker")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_file = output_dir / f"intraday_signals_{timestamp}.json"
+
     output_file.parent.mkdir(parents=True, exist_ok=True)
     
     with open(output_file, "w", encoding="utf-8") as f:
@@ -40,11 +41,8 @@ async def run_pipeline():
     meta = final_payload["metadata"]
     signals = final_payload["signals"]
     
-    print("\n" + "=" * 60)
-    print(f"PIPELINE COMPLETE IN {elapsed:.2f}s")
-    print(f"Companies with signals: {len(signals)}")
-    print(f"Companies removed (noise): {meta['companies_removed']}")
-    print(f"Total articles kept: {meta['total_articles_kept']}")
+    meta = final_payload["metadata"]
+    signals = final_payload["signals"]
     print(f"Saved to: {output_file}")
     print("=" * 60)
 
