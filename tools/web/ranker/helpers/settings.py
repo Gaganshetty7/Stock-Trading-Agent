@@ -10,7 +10,7 @@ RANKING_MODEL = os.getenv("RANKING_MODEL", "gemini-flash-latest")
 # -- Orchestration Parameters --
 RANKING_BATCH_SIZE = 10        # Companies per LLM call
 RANKING_CONCURRENCY = 1        # Sequential calls (single key protection)
-RANKING_STAGGER_DELAY = 4.0    # Seconds between batches (The 'sweet spot' for single Free Key)
+RANKING_STAGGER_DELAY = 5.0    # Seconds between batches (Guarantees zero quota errors on 16-batch runs)
 
 
 RANKING_TIMEOUT = 50           # Seconds per LLM call
