@@ -36,15 +36,15 @@ async def run_pipeline():
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(final_payload, f, indent=2, ensure_ascii=False)
 
+
     elapsed = time.perf_counter() - start_time
     
-    meta = final_payload["metadata"]
-    signals = final_payload["signals"]
-    
-    meta = final_payload["metadata"]
-    signals = final_payload["signals"]
-    print(f"Saved to: {output_file}")
+    print(f"Saved Signals:    {output_file}")
+    print("\n" + "=" * 60)
+    print(f"PIPELINE COMPLETE IN {elapsed:.2f}s")
     print("=" * 60)
 
 if __name__ == "__main__":
     asyncio.run(run_pipeline())
+
+

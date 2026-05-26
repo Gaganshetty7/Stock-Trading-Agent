@@ -23,7 +23,8 @@ from .helpers.settings import (
     MAX_TITLE_LEN,
     TOP_N_ARTICLES,
     MIN_CONFIDENCE,
-    GEMINI_RANKING_KEY,
+    GEMINI_API_KEY,
+
     MARKET_CLOSED_MULTIPLIER,
     STALE_DECAY_MULTIPLIER,
     STALE_THRESHOLD_MINS
@@ -41,7 +42,8 @@ from .token_tracker import log_token_usage
 load_dotenv()
 
 # ── Single Client (Protected Key) ─────────────────────────────────────────────
-CLIENT = genai.Client(api_key=GEMINI_RANKING_KEY)
+CLIENT = genai.Client(api_key=GEMINI_API_KEY)
+
 
 
 async def call_llm(prompt: str, metrics: PipelineMetrics) -> Optional[str]:
@@ -78,22 +80,27 @@ async def call_llm(prompt: str, metrics: PipelineMetrics) -> Optional[str]:
 
         metrics.latencies.append(time.time() - start)
 
+
+
         
         # Log successful hit
-        log_api_usage(GEMINI_RANKING_KEY, RANKING_MODEL, "SUCCESS")
+        log_api_usage(GEMINI_API_KEY, RANKING_MODEL, "SUCCESS")
+
         metrics.api_calls_made += 1
         return response.text
     except Exception as e:
         err_str = str(e)
         # Check for 429/Quota
         if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-            log_api_usage(GEMINI_RANKING_KEY, RANKING_MODEL, "REJECTED_429")
+            log_api_usage(GEMINI_API_KEY, RANKING_MODEL, "REJECTED_429")
             raise QuotaError("Quota hit")
+
         
         # Check for 403/Key revoked
         if "403" in err_str or "PERMISSION_DENIED" in err_str:
-            log_api_usage(GEMINI_RANKING_KEY, RANKING_MODEL, "REJECTED_403_KEY_REVOKED")
+            log_api_usage(GEMINI_API_KEY, RANKING_MODEL, "REJECTED_403_KEY_REVOKED")
             print(f"  [FATAL] API Key revoked/leaked. Get a new key.")
+
             return None
         
         print(f"  [LLM Error] {e}")
@@ -178,6 +185,7 @@ async def rank_news_payload(payload: Dict) -> Dict:
     logger.info(msg_model)
 
     for i, batch_tickers in enumerate(batches):
+
         log_quota_attempt(RANKING_MODEL, "START")
         ts, validated, status = await run_batch(batch_tickers, i, mapped, metrics)
 
@@ -239,7 +247,41 @@ async def rank_news_payload(payload: Dict) -> Dict:
         # Note: In production we'd use a more robust loop here, but this preserves the logic requested.
         for i, batch_tickers in enumerate(skipped_batches):
              _, validated, status = await run_batch(batch_tickers, 99, mapped, metrics)
-             # (Processing logic same as above omitted for brevity in final prod version unless requested)
+             if status == "success" and validated:
+                market_open = is_market_open()
+                for article in validated.results:
+                    tk = article.ticker
+                    
+                    # Apply multipliers (Market session & Freshness Decay)
+                    if not market_open:
+                        article.confidence *= MARKET_CLOSED_MULTIPLIER
+                    
+                    age_mins = parse_age_to_mins(article.age)
+                    if age_mins > STALE_THRESHOLD_MINS:
+                        article.confidence *= STALE_DECAY_MULTIPLIER
+                    
+                    # Round to exactly 2 decimal places
+                    article.confidence = round(article.confidence, 2)
+                    article.impact_score = round(article.impact_score, 2)
+
+                    # Final filtering
+                    if article.confidence >= MIN_CONFIDENCE and article.impact_score >= 0.4:
+                        # RE-ASSOCIATE URL AND PUBLISHED
+                        if tk in mapped and "company_insights" in mapped[tk]:
+                            for original in mapped[tk]["company_insights"]:
+                                clean_search = article.title.strip("…").strip()
+                                if clean_search in original["title"]:
+                                    article.url = original.get("link")
+                                    article.published = original.get("published_date")
+                                    break
+
+                        if tk not in final_output:
+                            final_output[tk] = []
+                        
+                        if len(final_output[tk]) < TOP_N_ARTICLES:
+                            final_output[tk].append(article.model_dump())
+                            metrics.total_articles_out += 1
+
 
     # Final Telemetry
     metrics.companies_with_signal = len(final_output)

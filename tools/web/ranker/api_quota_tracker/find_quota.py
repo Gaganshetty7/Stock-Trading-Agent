@@ -3,7 +3,8 @@ from dotenv import load_dotenv
 from google import genai
 
 load_dotenv()
-_KEY = os.getenv("GEMINI_RANKING_KEY", "")
+_KEY = os.getenv("GEMINI_API_KEY", "")
+
 
 async def check():
     client = genai.Client(api_key=_KEY)
