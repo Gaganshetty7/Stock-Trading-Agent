@@ -10,7 +10,9 @@ RANKING_MODEL = os.getenv("RANKING_MODEL", "gemini-flash-latest")
 # -- Orchestration Parameters --
 RANKING_BATCH_SIZE = 10        # Companies per LLM call
 RANKING_CONCURRENCY = 1        # Sequential calls (single key protection)
-RANKING_STAGGER_DELAY = 2.0    # Seconds between batches
+RANKING_STAGGER_DELAY = 4.0    # Seconds between batches (The 'sweet spot' for single Free Key)
+
+
 RANKING_TIMEOUT = 50           # Seconds per LLM call
 
 # -- Data Constraints --
@@ -25,6 +27,8 @@ STALE_THRESHOLD_MINS = 180       # 3 hours
 
 # ── API Key Management ────────────────────────────────────────────────────────
 # Single key for ranking - friend's key, must be protected
-GEMINI_RANKING_KEY = os.getenv("GEMINI_RANKING_KEY", "")
-if not GEMINI_RANKING_KEY:
-    raise ValueError("GEMINI_RANKING_KEY not found in .env — add it there, never hardcode it")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+if not GEMINI_API_KEY:
+    raise ValueError("GEMINI_API_KEY not found in .env — add it there, never hardcode it")
+
+

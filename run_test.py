@@ -43,10 +43,14 @@ async def run_pipeline():
     signals = ranked_payload["signals"]
     top_stocks = dynamic_threshold_select(signals)
 
-    # ─────────────── SAFE COUNTING ───────────────
-    bullish = sum(1 for articles in top_stocks.values() for x in articles if x.get("trend") == "bullish")
-    bearish = sum(1 for articles in top_stocks.values() for x in articles if x.get("trend") == "bearish")
-    sideways = sum(1 for articles in top_stocks.values() for x in articles if x.get("trend") == "sideways")
+    # ─────────────── SAFE COUNTING & TICKER LISTS ───────────────
+    bullish_tickers = [t for t, arts in top_stocks.items() if any(x.get("trend") == "bullish" for x in arts)]
+    bearish_tickers = [t for t, arts in top_stocks.items() if any(x.get("trend") == "bearish" for x in arts)]
+    sideways_tickers = [t for t, arts in top_stocks.items() if any(x.get("trend") == "sideways" for x in arts)]
+
+    bullish_count = len(bullish_tickers)
+    bearish_count = len(bearish_tickers)
+    sideways_count = len(sideways_tickers)
 
     # ─────────────── FINAL OUTPUT (TOP STOCKS) ───────────────
     final_output = {
@@ -54,9 +58,9 @@ async def run_pipeline():
             "input_file": str(ranked_file),
             "total_companies": len(signals),
             "selected_top_stocks": sum(len(v) for v in top_stocks.values()),
-            "bullish": bullish,
-            "bearish": bearish,
-            "sideways": sideways,
+            "bullish": bullish_count,
+            "bearish": bearish_count,
+            "sideways": sideways_count,
             "generated_at": datetime.now(ist).isoformat()
         },
         "top_stocks": top_stocks
@@ -74,11 +78,11 @@ async def run_pipeline():
     print(f"PIPELINE COMPLETE IN {elapsed:.2f}s")
     print(f"Top Stocks File: {final_file}")
     print(f"Signals File:    {ranked_file}")
-    print("-" * 30)
-    print(f"Bullish:  {bullish}")
-    print(f"Bearish:  {bearish}")
-    print(f"Sideways: {sideways}")
     print("=" * 60 + "\n")
+
+
 
 if __name__ == "__main__":
     asyncio.run(run_pipeline())
+
+
