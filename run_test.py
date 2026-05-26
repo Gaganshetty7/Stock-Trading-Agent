@@ -26,15 +26,17 @@ async def run_pipeline():
     final_payload = await rank_news_payload(payload)
     
     # SAVE FINAL RESULT
+    elapsed = round(time.perf_counter() - start_time, 2)
+    final_payload["metadata"]["pipeline_time_seconds"] = elapsed
+
     timestamp = datetime.now(ist).strftime("%Y%m%d_%H%M%S")
     output_dir = Path("outputs/ranker")
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / f"intraday_signals_{timestamp}.json"
-
-    output_file.parent.mkdir(parents=True, exist_ok=True)
     
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(final_payload, f, indent=2, ensure_ascii=False)
+
 
 
     elapsed = time.perf_counter() - start_time
