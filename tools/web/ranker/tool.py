@@ -13,8 +13,8 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field, ValidationError
 
-from .quota_tracker import log_api_usage, get_today_usage, log_quota_attempt
-from .ranking_config import (
+from .api_quota_tracker.quota_tracker import log_api_usage, get_today_usage, log_quota_attempt
+from .helpers.settings import (
     RANKING_MODEL,
     RANKING_BATCH_SIZE,
     RANKING_CONCURRENCY,
@@ -30,11 +30,13 @@ from .ranking_config import (
 )
 
 # Modular ranker components
-from .schemas import ScoredArticle, BatchResponse
-from .utils import QuotaError, robust_json_parser, truncate, logger
-from .helpers import is_market_open, parse_age_to_mins
-from .prompts import RANK_PROMPT
-from .metrics import PipelineMetrics
+from .helpers.schemas import ScoredArticle, BatchResponse
+from .helpers.utils import QuotaError, robust_json_parser, truncate, logger
+from .helpers.market_helpers import is_market_open, parse_age_to_mins
+from .helpers.prompts import RANK_PROMPT
+from .helpers.metrics import PipelineMetrics
+from .token_tracker import extract_context_usage
+from .token_tracker import log_token_usage
 
 load_dotenv()
 
@@ -56,7 +58,26 @@ async def call_llm(prompt: str, metrics: PipelineMetrics) -> Optional[str]:
             ),
             timeout=RANKING_TIMEOUT,
         )
+        
+        usage = getattr(response, "usage_metadata", None)
+
+        stats = None  # IMPORTANT: always define
+
+        if usage:
+            stats = extract_context_usage(RANKING_MODEL, usage)
+
+             # log token usage safely
+            log_token_usage(
+                model=RANKING_MODEL,
+                prompt_tokens=stats["input_tokens"],
+                completion_tokens=stats["output_tokens"],
+                thought_tokens=stats.get("thought_tokens", 0),
+                total_tokens=stats["total_tokens"],
+                context_limit=stats["context_limit"],
+            )
+
         metrics.latencies.append(time.time() - start)
+
         
         # Log successful hit
         log_api_usage(GEMINI_RANKING_KEY, RANKING_MODEL, "SUCCESS")
@@ -151,15 +172,12 @@ async def rank_news_payload(payload: Dict) -> Dict:
 
     # Sequential execution (Protected Key)
     msg_start = f"Starting Signal Extraction for {metrics.total_companies} companies..."
-    print(f"  - {msg_start}")
     logger.info(msg_start)
     
     msg_model = f"Model: {RANKING_MODEL} | Batch Size: {RANKING_BATCH_SIZE}"
-    print(f"  {msg_model}")
     logger.info(msg_model)
 
     for i, batch_tickers in enumerate(batches):
-        print(f"  [Batch {i+1}/{len(batches)}] {batch_tickers[:3]}{'...' if len(batch_tickers)>3 else ''}")
         log_quota_attempt(RANKING_MODEL, "START")
         ts, validated, status = await run_batch(batch_tickers, i, mapped, metrics)
 
@@ -169,7 +187,6 @@ async def rank_news_payload(payload: Dict) -> Dict:
         rem = bal.get("remaining", "??")
         status_char = "success" if status == "success" else "FAILED"
         msg_batch = f"Batch {i+1} Status: {status_char} | Remaining Quota: {rem}"
-        print(f"    {msg_batch}")
         logger.info(msg_batch)
 
         if status == "success" and validated:

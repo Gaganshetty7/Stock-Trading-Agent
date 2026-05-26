@@ -4,8 +4,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict
 
-QUOTA_FILE = Path("logs/quota_usage.json")
-QUOTA_COUNT_FILE = Path("logs/quota_counter.txt")
+QUOTA_FILE = Path("logs/api_quota_tracker/quota_usage.json")
+QUOTA_COUNT_FILE = Path("logs/api_quota_tracker/quota_counter.txt")
+
 
 def log_api_usage(key: str, model: str, status: str = "SUCCESS"):
     """Logs a single API request with 12hr timestamp and status."""
@@ -53,7 +54,10 @@ def log_api_usage(key: str, model: str, status: str = "SUCCESS"):
 
     # --- Part 2: TXT Counter (Simple Appending) ---
     with open(QUOTA_COUNT_FILE, "a") as f:
-        f.write(f"[{date_str} {time_str}] CALL: {total_calls} | REMAINING: {remaining} | STATUS: {status} | MODEL: {model}\n")
+        f.write("-" * 60 + "\n")
+        f.write(f"[{date_str} {time_str}] CALL: {total_calls} | REMAINING: {remaining}\n")
+        f.write(f"STATUS: {status} | MODEL: {model}\n")
+        f.write("-" * 60 + "\n\n")
 
 def log_quota_attempt(model: str, status: str = "SKIPPED"):
     """Logs an attempt to use the quota, even if skipped/mocked."""
@@ -67,7 +71,11 @@ def log_quota_attempt(model: str, status: str = "SKIPPED"):
     used = bal.get("used", "??")
 
     with open(QUOTA_COUNT_FILE, "a") as f:
-        f.write(f"[{date_str} {time_str}] ATTEMPT: {used} | REMAINING: {rem} | STATUS: {status} | MODEL: {model}\n")
+        f.write("=" * 60 + "\n")
+        f.write(f"[{date_str} {time_str}] SESSION ATTEMPT: {status}\n")
+        f.write(f"CURRENT USED: {used} | REMAINING: {rem} | MODEL: {model}\n")
+        f.write("=" * 60 + "\n\n")
+
 
 def get_today_usage() -> Dict:
     """Returns usage stats for today."""
