@@ -12,7 +12,10 @@ RANKING_BATCH_SIZE = 10
 
 RANKING_CONCURRENCY = 1
 
-RANKING_STAGGER_DELAY = 0.5
+RANKING_STAGGER_DELAY = 1.5     # Increased from 0.5 to proactively avoid 429s
+
+RANKING_MAX_RETRIES = 3        # Local retries per batch
+RANKING_BACKOFF_BASE = 5.0    # Initial backoff in seconds
 
 RANKING_TIMEOUT = 25
 

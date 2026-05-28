@@ -20,6 +20,8 @@ from .helpers.settings import (
     RANKING_CONCURRENCY,
     RANKING_STAGGER_DELAY,
     RANKING_TIMEOUT,
+    RANKING_MAX_RETRIES,
+    RANKING_BACKOFF_BASE,
     MAX_TITLE_LEN,
     TOP_N_ARTICLES,
     MIN_CONFIDENCE,
@@ -50,73 +52,74 @@ CLIENT = genai.Client(api_key=GEMINI_RANKER_API_KEY)
 
 
 async def call_llm(prompt: str, metrics: PipelineMetrics) -> Optional[str]:
-    """Makes the actual LLM call and handles quota/error logic."""
-    try:
-        start = time.time()
-        response = await asyncio.wait_for(
-            CLIENT.aio.models.generate_content(
-                model=RANKING_MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json"
+    """Makes the actual LLM call with exponential backoff for 429s."""
+    attempt = 0
+    while attempt <= RANKING_MAX_RETRIES:
+        try:
+            start = time.time()
+            response = await asyncio.wait_for(
+                CLIENT.aio.models.generate_content(
+                    model=RANKING_MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json"
+                    ),
                 ),
-            ),
-            timeout=RANKING_TIMEOUT,
-        )
-        
-        usage = getattr(response, "usage_metadata", None)
-
-        stats = None  # IMPORTANT: always define
-
-        if usage:
-            stats = extract_context_usage(RANKING_MODEL, usage)
-
-            # log token usage safely
-            log_token_usage(
-                model=RANKING_MODEL,
-                prompt_tokens=stats["input_tokens"],
-                completion_tokens=stats["output_tokens"],
-                thought_tokens=stats.get("thought_tokens", 0),
-                total_tokens=stats["total_tokens"],
-                context_limit=stats["context_limit"],
+                timeout=RANKING_TIMEOUT,
             )
+            
+            usage = getattr(response, "usage_metadata", None)
+            if usage:
+                stats = extract_context_usage(RANKING_MODEL, usage)
+                log_token_usage(
+                    model=RANKING_MODEL,
+                    prompt_tokens=stats["input_tokens"],
+                    completion_tokens=stats["output_tokens"],
+                    thought_tokens=stats.get("thought_tokens", 0),
+                    total_tokens=stats["total_tokens"],
+                    context_limit=stats["context_limit"],
+                )
+                metrics.total_input_tokens += stats["input_tokens"]
+                metrics.total_output_tokens += stats["output_tokens"]
+                metrics.total_tokens += stats["total_tokens"]
 
-            metrics.total_input_tokens += stats["input_tokens"]
-            metrics.total_output_tokens += stats["output_tokens"]
-            metrics.total_tokens += stats["total_tokens"]
+            latency = time.time() - start
+            metrics.latencies.append(latency)
+            metrics.request_timestamps.append(time.time())
+            
+            log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "SUCCESS")
+            metrics.api_calls_made += 1
+            return response.text
 
-        latency = time.time() - start
+        except Exception as e:
+            metrics.api_calls_made += 1
+            err_str = str(e)
+            
+            # Check for 429/Quota
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "REJECTED_429")
+                
+                if attempt < RANKING_MAX_RETRIES:
+                    attempt += 1
+                    backoff = RANKING_BACKOFF_BASE * (2 ** (attempt - 1))
+                    msg = f"  [Quota 429] Retrying in {backoff}s... (Attempt {attempt}/{RANKING_MAX_RETRIES})"
+                    print(msg)
+                    logger.warning(msg)
+                    await asyncio.sleep(backoff)
+                    continue
+                else:
+                    print("  [FATAL] Quota exhausted after all retries.")
+                    raise QuotaError("Quota exhausted")
 
-        metrics.latencies.append(latency)
-
-        metrics.request_timestamps.append(time.time())
-
-
-
-        
-        # Log successful hit
-        log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "SUCCESS")
-
-        metrics.api_calls_made += 1
-        return response.text
-    except Exception as e:
-        metrics.api_calls_made += 1
-        err_str = str(e)
-        # Check for 429/Quota
-        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-            log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "REJECTED_429")
-            raise QuotaError("Quota hit")
-
-        
-        # Check for 403/Key revoked
-        if "403" in err_str or "PERMISSION_DENIED" in err_str:
-            log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "REJECTED_403_KEY_REVOKED")
-            print(f"  [FATAL] API Key revoked/leaked. Get a new key.")
-
+            # Check for 403/Key revoked
+            if "403" in err_str or "PERMISSION_DENIED" in err_str:
+                log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "REJECTED_403_KEY_REVOKED")
+                print(f"  [FATAL] API Key revoked/leaked. Get a new key.")
+                return None
+            
+            print(f"  [LLM Error] {e}")
             return None
-        
-        print(f"  [LLM Error] {e}")
-        return None
+    return None
 
 
 async def rank_news_payload(payload: Dict) -> Dict:
@@ -145,7 +148,6 @@ async def rank_news_payload(payload: Dict) -> Dict:
     # All batches processed (no restriction)
 
     final_output = {}
-    skipped_batches = []
 
     async def run_batch(batch_tickers: List[str], i: int, data_source: Dict, m: PipelineMetrics):
         batch_start = time.time()
@@ -265,66 +267,14 @@ async def rank_news_payload(payload: Dict) -> Dict:
                     if len(final_output[tk]) < TOP_N_ARTICLES:
                         final_output[tk].append(article.model_dump())
                         metrics.total_articles_out += 1
-        
         elif status == "quota_skipped":
-            skipped_batches.append(batch_tickers)
+            # This status correctly tracks batches that failed even after retries
+            metrics.quota_skipped += 1
 
         if i < len(batches) - 1:
             await asyncio.sleep(RANKING_STAGGER_DELAY)
             metrics.total_stagger_wait_seconds += RANKING_STAGGER_DELAY
 
-    # Simple retry for 429 skips
-    if skipped_batches:
-        msg_retry = f"Retrying {len(skipped_batches)} quota-skipped batches after 60s..."
-        print(f"\n{msg_retry}")
-        logger.info(msg_retry)
-        await asyncio.sleep(60)
-        # Note: In production we'd use a more robust loop here, but this preserves the logic requested.
-        for i, batch_tickers in enumerate(skipped_batches):
-             _, validated, status = await run_batch(batch_tickers, 99, mapped, metrics)
-             if status == "success" and validated:
-                market_open = is_market_open()
-                for article in validated.results:
-                    tk = article.ticker
-                    
-                    # Apply multipliers (Market session & Freshness Decay)
-                    if not market_open:
-                        article.confidence *= MARKET_CLOSED_MULTIPLIER
-                    
-                    age_mins = parse_age_to_mins(article.age)
-                    if age_mins > STALE_THRESHOLD_MINS:
-                        article.confidence *= STALE_DECAY_MULTIPLIER
-                    
-                    # Round to exactly 2 decimal places
-                    article.confidence = round(article.confidence, 2)
-                    article.impact_score = round(article.impact_score, 2)
-
-                    # Final filtering
-                    if article.confidence >= MIN_CONFIDENCE and article.impact_score >= 0.4:
-                        # RE-ASSOCIATE URL AND PUBLISHED
-                        if tk in mapped and "company_insights" in mapped[tk]:
-                            for original in mapped[tk]["company_insights"]:
-                                clean_search = article.title.strip("…").strip()
-                                if clean_search in original["title"]:
-                                    article.url = original.get("link")
-                                    article.published = original.get("published_date")
-                                    break
-
-                        if tk not in final_output:
-                            final_output[tk] = []
-                        
-                        if len(final_output[tk]) < TOP_N_ARTICLES:
-                            final_output[tk].append(article.model_dump())
-                            metrics.total_articles_out += 1
-             
-             # STAGGER RETRIES TOO
-             if i < len(skipped_batches) - 1:
-                 await asyncio.sleep(RANKING_STAGGER_DELAY)
-                 metrics.total_stagger_wait_seconds += RANKING_STAGGER_DELAY
-
-
-    # ─────────────────────────────────────────────
-    # Final Telemetry & Metadata
     # ─────────────────────────────────────────────
     metrics.companies_with_signal = len(final_output)
     metrics.companies_removed = metrics.total_companies - metrics.companies_with_signal
