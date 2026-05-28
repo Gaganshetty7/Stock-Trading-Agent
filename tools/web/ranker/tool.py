@@ -23,7 +23,7 @@ from .helpers.settings import (
     MAX_TITLE_LEN,
     TOP_N_ARTICLES,
     MIN_CONFIDENCE,
-    GEMINI_API_KEY,
+    GEMINI_RANKER_API_KEY,
 
     MARKET_CLOSED_MULTIPLIER,
     STALE_DECAY_MULTIPLIER,
@@ -39,10 +39,13 @@ from .helpers.metrics import PipelineMetrics
 from .token_tracker import extract_context_usage
 from .token_tracker import log_token_usage
 
+from .helpers.run_metadata import RunTelemetry
+from pathlib import Path
+
 load_dotenv()
 
 # ── Single Client (Protected Key) ─────────────────────────────────────────────
-CLIENT = genai.Client(api_key=GEMINI_API_KEY)
+CLIENT = genai.Client(api_key=GEMINI_RANKER_API_KEY)
 
 
 
@@ -68,7 +71,7 @@ async def call_llm(prompt: str, metrics: PipelineMetrics) -> Optional[str]:
         if usage:
             stats = extract_context_usage(RANKING_MODEL, usage)
 
-             # log token usage safely
+            # log token usage safely
             log_token_usage(
                 model=RANKING_MODEL,
                 prompt_tokens=stats["input_tokens"],
@@ -78,27 +81,36 @@ async def call_llm(prompt: str, metrics: PipelineMetrics) -> Optional[str]:
                 context_limit=stats["context_limit"],
             )
 
-        metrics.latencies.append(time.time() - start)
+            metrics.total_input_tokens += stats["input_tokens"]
+            metrics.total_output_tokens += stats["output_tokens"]
+            metrics.total_tokens += stats["total_tokens"]
+
+        latency = time.time() - start
+
+        metrics.latencies.append(latency)
+
+        metrics.request_timestamps.append(time.time())
 
 
 
         
         # Log successful hit
-        log_api_usage(GEMINI_API_KEY, RANKING_MODEL, "SUCCESS")
+        log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "SUCCESS")
 
         metrics.api_calls_made += 1
         return response.text
     except Exception as e:
+        metrics.api_calls_made += 1
         err_str = str(e)
         # Check for 429/Quota
         if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-            log_api_usage(GEMINI_API_KEY, RANKING_MODEL, "REJECTED_429")
+            log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "REJECTED_429")
             raise QuotaError("Quota hit")
 
         
         # Check for 403/Key revoked
         if "403" in err_str or "PERMISSION_DENIED" in err_str:
-            log_api_usage(GEMINI_API_KEY, RANKING_MODEL, "REJECTED_403_KEY_REVOKED")
+            log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "REJECTED_403_KEY_REVOKED")
             print(f"  [FATAL] API Key revoked/leaked. Get a new key.")
 
             return None
@@ -136,6 +148,7 @@ async def rank_news_payload(payload: Dict) -> Dict:
     skipped_batches = []
 
     async def run_batch(batch_tickers: List[str], i: int, data_source: Dict, m: PipelineMetrics):
+        batch_start = time.time()
         # Format input for LLM
         truncated_payload = []
         for t in batch_tickers:
@@ -158,24 +171,45 @@ async def rank_news_payload(payload: Dict) -> Dict:
             payload=json.dumps(truncated_payload, indent=1)
         )
 
+        status = "unknown"
         try:
             raw_response = await call_llm(prompt, m)
             if not raw_response:
-                return None, None, "error (LLM empty)"
+                status = "error (LLM empty)"
+                return None, None, status
             
             clean_json = robust_json_parser(raw_response)
             if not clean_json:
                 m.parse_failures += 1
-                return None, None, "parse_fail"
+                status = "parse_fail"
+                return None, None, status
 
             validated = BatchResponse(**clean_json)
-            return raw_response, validated, "success"
+            m.success_count += 1
+            status = "success"
+            return raw_response, validated, status
+            
         except QuotaError:
             m.quota_skipped += 1
-            return None, None, "quota_skipped"
+            status = "quota_skipped"
+            return None, None, status
         except Exception as e:
+            m.failure_count += 1
             print(f"  [Batch {i+1} Error] {e}")
-            return None, None, "error"
+            status = f"error: {str(e)[:50]}"
+            return None, None, status
+        finally:
+            batch_latency = time.time() - batch_start
+            m.batch_details.append({
+                "batch_id": i + 1,
+                "companies_in_batch": len(batch_tickers),
+                "articles_in_batch": len(truncated_payload),
+                "llm_latency_seconds": round(batch_latency, 2),
+                "status": status,
+                "stagger_delay_applied": RANKING_STAGGER_DELAY,
+                "started_at": datetime.fromtimestamp(batch_start).isoformat(),
+                "finished_at": datetime.now().isoformat(),
+            })
 
     # Sequential execution (Protected Key)
     msg_start = f"Starting Signal Extraction for {metrics.total_companies} companies..."
@@ -237,6 +271,7 @@ async def rank_news_payload(payload: Dict) -> Dict:
 
         if i < len(batches) - 1:
             await asyncio.sleep(RANKING_STAGGER_DELAY)
+            metrics.total_stagger_wait_seconds += RANKING_STAGGER_DELAY
 
     # Simple retry for 429 skips
     if skipped_batches:
@@ -281,9 +316,16 @@ async def rank_news_payload(payload: Dict) -> Dict:
                         if len(final_output[tk]) < TOP_N_ARTICLES:
                             final_output[tk].append(article.model_dump())
                             metrics.total_articles_out += 1
+             
+             # STAGGER RETRIES TOO
+             if i < len(skipped_batches) - 1:
+                 await asyncio.sleep(RANKING_STAGGER_DELAY)
+                 metrics.total_stagger_wait_seconds += RANKING_STAGGER_DELAY
 
 
-    # Final Telemetry
+    # ─────────────────────────────────────────────
+    # Final Telemetry & Metadata
+    # ─────────────────────────────────────────────
     metrics.companies_with_signal = len(final_output)
     metrics.companies_removed = metrics.total_companies - metrics.companies_with_signal
     
@@ -293,10 +335,32 @@ async def rank_news_payload(payload: Dict) -> Dict:
     elif metrics.total_companies > 0 and metrics.companies_with_signal == 0:
         run_status = "no_signals_found"
 
-    # Get usage stats
-    usage_stats = get_today_usage()
-    metrics.report(usage_stats)
+    # Terminal Report
+    metrics.report()
 
+    # Save Detailed Metadata File
+    metadata_output = metrics.generate_metadata()
+
+    ist = pytz.timezone("Asia/Kolkata")
+
+    timestamp = datetime.now(ist).strftime("%Y%m%d_%H%M%S")
+
+    metadata_dir = Path("outputs/metadata")
+    metadata_dir.mkdir(parents=True, exist_ok=True)
+
+    metadata_file = (
+        metadata_dir
+        / f"pipeline_metadata_{timestamp}.json"
+    )
+
+    with open(metadata_file, "w", encoding="utf-8") as f:
+        json.dump(metadata_output, f, indent=2)
+
+    logger.info(f"Metadata saved -> {metadata_file}")
+
+    # ─────────────────────────────────────────────
+    # RETURN FINAL RESULT
+    # ─────────────────────────────────────────────
     return {
         "metadata": {
             "status": run_status,
