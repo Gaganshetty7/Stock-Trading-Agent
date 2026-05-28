@@ -5,15 +5,16 @@ load_dotenv()
 
 # ── Ranking LLM Config ────────────────────────────────────────────────────────
 # Specific model identifier for the ranking/filtering stage
-RANKING_MODEL = os.getenv("RANKING_MODEL", "gemini-flash-latest")
+RANKING_MODEL = os.getenv("RANKING_MODEL")
 
 # -- Orchestration Parameters --
-RANKING_BATCH_SIZE = 10        # Companies per LLM call
-RANKING_CONCURRENCY = 1        # Sequential calls (single key protection)
-RANKING_STAGGER_DELAY = 5.0    # Seconds between batches (Guarantees zero quota errors on 16-batch runs)
+RANKING_BATCH_SIZE = 10
 
+RANKING_CONCURRENCY = 1
 
-RANKING_TIMEOUT = 50           # Seconds per LLM call
+RANKING_STAGGER_DELAY = 0.5
+
+RANKING_TIMEOUT = 25
 
 # -- Data Constraints --
 MAX_TITLE_LEN = 160            # Truncate long titles before sending to LLM
