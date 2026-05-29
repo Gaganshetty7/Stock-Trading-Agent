@@ -5,27 +5,10 @@ from datetime import datetime
 from typing import List, Dict, Optional
 
 # ── Logging Setup ────────────────────────────────────────────────────────────
-def setup_ranker_logger():
-    log_dir = "logs/ranker_logs"
-    os.makedirs(log_dir, exist_ok=True)
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(log_dir, f"ranker_{timestamp}.log")
-    
-    logger = logging.getLogger("ranker")
-    logger.setLevel(logging.INFO)
-    
-    # Avoid duplicate handlers
-    if not logger.handlers:
-        fh = logging.FileHandler(log_file)
-        fh.setFormatter(logging.Formatter('%(asctime)s | ranker | %(levelname)s | %(message)s'))
-        logger.addHandler(fh)
-    
-    return logger
+from core.logger import get_logger
 
-# Initialize logger
-setup_ranker_logger()
-logger = logging.getLogger("ranker")
+# Use core logger for consistent terminal and run-log reporting
+logger = get_logger("ranker")
 
 class QuotaError(Exception):
     """Custom error for 429 rejections."""

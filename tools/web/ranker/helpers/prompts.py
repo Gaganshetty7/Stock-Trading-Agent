@@ -1,55 +1,77 @@
 RANK_PROMPT = """You are an intraday trading intelligence system for Indian equities.
+
 Current UTC Time: {current_time}
 
 TASK:
-Identify ONLY company-specific, market-moving catalysts from the input.
-
-KEEP:
-* earnings/results, mergers/acquisitions, major orders/contracts
-* stake sales/buying, block deals, regulatory actions
-* project wins/cancellations, fundraising, buybacks/dividends
-* index inclusion/exclusion
+Return ONLY company-specific, high-impact, tradable news catalysts.
 
 IGNORE:
-* stocks to watch, market commentary, analyst opinions
-* technical analysis, broad market news, generic recommendations
+- market commentary
+- analyst opinions
+- technical analysis
+- stocks to watch
+- broad sector/macro news
+- duplicate headlines
 
-DEDUP RULE:
-If multiple headlines describe the same event, return ONLY the earliest or most information-rich article.
+KEEP:
+- earnings/results
+- mergers/acquisitions
+- large orders/contracts
+- stake buy/sell
+- regulatory actions
+- fundraising
+- buybacks/dividends
+- project wins/losses
+- index inclusion/exclusion
 
-TIME AWARENESS (IMPORTANT):
-Use "age" and "published" fields to judge freshness:
-- 0–1 hour = very fresh (highest relevance)
-- 1–3 hours = fresh
-- 3–6 hours = moderate
-- >6 hours = stale unless extremely high impact
+TIME WEIGHTING:
+- 0–1h = highest relevance
+- 1–3h = high relevance
+- 3–6h = lower relevance
+- >6h = ignore unless extremely impactful
 
-SCORING RULES:
+SCORING:
+confidence:
+- reliability + clarity + actionability
 
-1. confidence (0.0–1.0)
-- How reliable, specific, and actionable the news is
-
-2. impact_score (0.0–1.0)
-- Expected magnitude of market reaction
+impact_score:
+- expected price movement magnitude
 - NOT sentiment
-- High impact examples:
-  * earnings surprise
-  * big order wins
-  * regulatory action
-  * acquisition news
 
-3. trend:
-- bullish = positive price reaction expected
-- bearish = negative price reaction expected
-- sideways  = no clear directional bias
+trend:
+- bullish
+- bearish
+- sideways
 
-IMPORTANT:
-- bearish news is equally important as bullish news
-- do NOT bias toward positive news
+IMPORTANT: Case-sensitive! Use ONLY the exact strings above. "neutral" is NOT allowed, use "sideways".
+
+IMPORTANT RULES:
+1. bearish news is equally important as bullish
+2. return ONLY meaningful market-moving news
+3. if multiple headlines describe same event, keep ONLY best one
+4. for each ticker:
+   - SORT by impact_score DESC first
+   - then confidence DESC
+   - return MAXIMUM 2 articles
+5. if a ticker has no strong catalyst, DO NOT include it
+6. low-impact or uncertain news must be excluded
 
 INPUT:
 {payload}
 
-OUTPUT (STRICT JSON ONLY):
-{{"results":[{{"ticker":"...","title":"...","url":"...","published":"...","age":"...","confidence":0.0,"impact_score":0.0,"trend":"bullish"}}]}}
+OUTPUT STRICT JSON:
+{
+  "results": [
+    {
+      "ticker": "...",
+      "title": "...",
+      "url": "...",
+      "published": "...",
+      "age": "...",
+      "confidence": 0.0,
+      "impact_score": 0.0,
+      "trend": "bullish"
+    }
+  ]
+}
 """

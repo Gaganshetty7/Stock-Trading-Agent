@@ -16,12 +16,39 @@ class StockNewsAgent(BaseAgent):
 
     @property
     def tool_names(self) -> list[str]:
-        # Seamlessly extensible: add new tools to this list when needed 
-        # (e.g., "write_json", "search_web", "analyze_sentiment")
-        return ["fetch_broad_market_rss"]
+        return ["fetch_broad_market_rss", "rank_news_payload"]
 
     def parse_output(self, final_output: dict[str, Any]) -> Any:
-        # Since fetch_broad_market_rss already writes the JSON to disk,
-        # we don't need a strict Pydantic model. We simply return the
-        # output the LLM provided during the FINISH action.
+        """
+        Final verification gate to ensure strict schema compliance.
+        Maps 'signals' to 'results' if needed, enforces float types, 
+        and strictly maps trend literals to bullish/bearish/sideways.
+        """
+        if not isinstance(final_output, dict):
+            return final_output
+
+        # Remap 'signals' to 'results' if LLM hallucinated the key
+        if "signals" in final_output and "results" not in final_output:
+            final_output["results"] = final_output.pop("signals")
+
+        if "results" in final_output:
+            for s in final_output["results"]:
+                # Ensure float types
+                try:
+                    s["confidence"] = float(s.get("confidence", 0.0))
+                except (ValueError, TypeError):
+                    s["confidence"] = 0.5
+                    
+                try:
+                    s["impact_score"] = float(s.get("impact_score", 0.0))
+                except (ValueError, TypeError):
+                    s["impact_score"] = 0.5
+                
+                # Strictly enforce Trend literal: "bullish", "bearish", "sideways"
+                t = str(s.get("trend", "sideways")).lower()
+                if t in ["bullish", "bearish", "sideways"]:
+                    s["trend"] = t
+                else:
+                    s["trend"] = "sideways"
+                
         return final_output
