@@ -1,4 +1,6 @@
 import logging
+import json
+
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.theme import Theme
@@ -68,9 +70,30 @@ def log_action(agent_name: str, tool: str, inputs: dict) -> None:
 
 
 def log_observation(agent_name: str, observation: str) -> None:
-    obs = observation if len(observation) < 300 else observation[:300] + "..."
+    # Summary logic for JSON payloads
+    obs = observation
+    if len(observation) > 150:
+        try:
+            # Try to identify large JSON payloads
+            data = json.loads(observation)
+            if isinstance(data, dict):
+                # Specific summary for news mapper tool
+                if "mapped_news" in data:
+                    count = len(data.get("mapped_news", {}))
+                    obs = f"[News Payload] {count} companies summarized in metadata."
+                # General dict summary
+                else:
+                    keys = list(data.keys())
+                    obs = f"[JSON] Keys: {keys}"
+            elif isinstance(data, list):
+                obs = f"[JSON List] {len(data)} items."
+        except Exception:
+            # Fallback to simple truncation
+            obs = observation[:150] + "..."
+
     console.print(f"[observation] [{agent_name}] OBSERVATION:[/observation] {obs}")
-    _agent_logger.debug("[%s] OBSERVATION: %s", agent_name, observation)  # full, untruncated
+    _agent_logger.debug("[%s] OBSERVATION: %s", agent_name, observation)
+
 
 
 def log_error(agent_name: str, error: str) -> None:
