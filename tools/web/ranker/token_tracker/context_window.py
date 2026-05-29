@@ -5,6 +5,8 @@ from typing import Dict, Any
 # You can expand this per model later
 MODEL_CONTEXT_LIMITS = {
     "gemini-flash-latest": 1_000_000,
+    "gemini-1.5-flash": 1_000_000,
+    "gemini-3.1-flash-lite": 1_000_000,
 }
 
 
@@ -26,9 +28,10 @@ def extract_context_usage(model: str, usage: Any) -> Dict:
         }
 
     # ── Core tokens ─────────────────────────────
-    input_tokens = getattr(usage, "prompt_token_count", 0)
-    output_tokens = getattr(usage, "candidates_token_count", 0)
-    thought_tokens = getattr(usage, "thoughts_token_count", 0)
+    # Use OR 0 to handle cases where the attribute exists but is None
+    input_tokens = getattr(usage, "prompt_token_count", 0) or 0
+    output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+    thought_tokens = getattr(usage, "thoughts_token_count", 0) or 0
 
     # Some SDK versions already include everything in total
     api_total = getattr(usage, "total_token_count", None)
