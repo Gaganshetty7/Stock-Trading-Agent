@@ -5,7 +5,7 @@ load_dotenv()
 
 # ── Ranking LLM Config ────────────────────────────────────────────────────────
 # Specific model identifier for the ranking/filtering stage
-RANKING_MODEL = os.getenv("RANKING_MODEL", "gemini-flash-latest")
+RANKING_MODEL = os.getenv("RANKING_MODEL")
 
 
 # -- Orchestration Parameters --
