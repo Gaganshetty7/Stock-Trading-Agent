@@ -25,20 +25,25 @@ def calculate_rsi(data, period=14):
     return float(rsi.iloc[-1])
 
 
-def process_stock(ticker, data, data_5m):
+def process_stock(ticker, data, data_5m, data_15m):
     try:
         if data.empty:
             raise Exception("No 1m data")
         if data_5m.empty:
             raise Exception("No 5m data")
+        if data_15m.empty:
+            raise Exception("No 15m data")
 
         data.dropna(inplace=True)
         data_5m.dropna(inplace=True)
+        data_15m.dropna(inplace=True)
 
         if len(data) < 25:
             raise Exception("Insufficient 1m data")
         if len(data_5m) < 20:
             raise Exception("Insufficient 5m data")
+        if len(data_15m) < 20:
+            raise Exception("Insufficient 15m data")
 
         latest_completed = data.iloc[-2]
         current_price    = float(latest_completed["Close"])
@@ -62,9 +67,17 @@ def process_stock(ticker, data, data_5m):
         S2 = P - (H - L)
         S3 = L - 2 * (H - P)
 
-        # ----- MA20 -----
+        # ----- MA20 (1m) -----
         data["MA20"] = data["Close"].rolling(MA_PERIOD).mean()
         ma20 = float(data["MA20"].iloc[-2])
+
+        # ----- MA (5m) -----
+        data_5m["MA20"] = data_5m["Close"].rolling(MA_PERIOD).mean()
+        ma20_5m = float(data_5m["MA20"].iloc[-2])
+
+        # ----- MA (15m) -----
+        data_15m["MA20"] = data_15m["Close"].rolling(MA_PERIOD).mean()
+        ma20_15m = float(data_15m["MA20"].iloc[-2])
 
         # ----- VWAP -----
         typical_price        = (data["High"] + data["Low"] + data["Close"]) / 3
@@ -116,6 +129,11 @@ def process_stock(ticker, data, data_5m):
                 "last_candle_volume" : last_volume,
                 "average_volume"     : int(average_volume),
                 "volume_strength"    : round(volume_strength, 2)
+            },
+            "ma_timeframes": {
+                "MA20_1m" : round(ma20, 2),
+                "MA20_5m" : round(ma20_5m, 2),
+                "MA20_15m": round(ma20_15m, 2)
             }
         }
 
