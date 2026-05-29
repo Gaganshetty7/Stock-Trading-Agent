@@ -21,6 +21,7 @@ RANKING_BATCH_SIZE   = 10
 # Concurrency overlaps network latency only.
 # Rate limiter still guarantees max 14 RPM.
 RANKING_CONCURRENCY  = 4
+RANKING_STAGGER_DELAY = 1.0  # Seconds between concurrent requests
 
 RANKING_TIMEOUT      = 35
 RANKING_MAX_RETRIES  = 1
@@ -28,6 +29,7 @@ RANKING_BACKOFF_BASE = 5.0
 RETRY_429_WAIT_SECS  = 60
 
 # ── Signal Filtering ──────────────────────────────────────────────────────────
+MAX_TITLE_LEN = 120
 TOP_N_ARTICLES = 2
 
 MIN_CONFIDENCE = 0.65
