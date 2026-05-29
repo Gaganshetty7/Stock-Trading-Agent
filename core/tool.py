@@ -32,6 +32,7 @@ def describe_tools(names: list[str]) -> str:
 # ── Tool Initialization ───────────────────────────────────────────────────────
 from tools.storage.file_writer import write_json
 from tools.web.broad_market_feeds.broad_rss_fetcher import fetch_broad_market_rss
+from tools.market.technical_analysis_tool.tool import fetch_and_save_technicals
 from tools.web.ranker.tool import rank_news_payload
 
 
@@ -57,4 +58,10 @@ def init_tools() -> None:
         "Processes a large collection of raw market news articles to extract high-confidence "
         "intraday signals. Filters news for market relevance, impact, and freshness. "
         "Input: payload (dict) containing 'mapped_news' tree. Returns structured tradable signals.",
+    )
+    register_tool(
+        "fetch_and_save_technicals",
+        fetch_and_save_technicals,
+        "Fetches technical analysis for a list of stock tickers in a single batch and saves it directly to disk. "
+        "Input: tickers (list of str). Returns the filepath where the technical indicators were saved."
     )
