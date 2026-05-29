@@ -123,7 +123,7 @@ def _cleanup_legacy_files(outputs_dir: Path) -> None:
         except Exception as e:
             logger.warning(f"Failed to delete {legacy_mapped.name}: {e}")
 
-async def fetch_broad_market_rss(max_age_hours: int = 6) -> dict:
+async def fetch_broad_market_rss(max_age_hours) -> dict:
     logger.info("=" * 60)
     logger.info("Starting broad market RSS sweep")
     logger.info(f"  Total queries:   {len(FINAL_MASTER_QUERY_LIST)}")

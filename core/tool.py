@@ -33,6 +33,8 @@ def describe_tools(names: list[str]) -> str:
 from tools.storage.file_writer import write_json
 from tools.web.broad_market_feeds.broad_rss_fetcher import fetch_broad_market_rss
 from tools.market.technical_analysis_tool.tool import fetch_and_save_technicals
+from tools.web.ranker.tool import rank_news_payload
+
 
 def init_tools() -> None:
     """Call this ONCE at application startup."""
@@ -48,7 +50,14 @@ def init_tools() -> None:
         fetch_broad_market_rss,
         "Performs a comprehensive sweep of the Indian stock market (NSE/BSE) using a "
         "wide query grid covering sectors, corporate events, and high-signal news. "
-        "Input: max_age_hours (int, default 72). Returns a deduplicated list of articles.",
+        "Input: max_age_hours (int, default 3). Returns a deduplicated list of articles.",
+    )
+    register_tool(
+        "rank_news_payload",
+        rank_news_payload,
+        "Processes a large collection of raw market news articles to extract high-confidence "
+        "intraday signals. Filters news for market relevance, impact, and freshness. "
+        "Input: payload (dict) containing 'mapped_news' tree. Returns structured tradable signals.",
     )
     register_tool(
         "fetch_and_save_technicals",
