@@ -17,6 +17,7 @@ from .api_quota_tracker.quota_tracker import log_api_usage, get_today_usage, log
 from .helpers.settings import (
     RANKING_MODEL,
     RANKING_BATCH_SIZE,
+
     RANKING_CONCURRENCY,
     RANKING_STAGGER_DELAY,
     RANKING_TIMEOUT,
@@ -53,79 +54,126 @@ CLIENT = genai.Client(api_key=GEMINI_RANKER_API_KEY)
 
 async def call_llm(prompt: str, metrics: PipelineMetrics) -> Optional[str]:
     """Makes the actual LLM call with exponential backoff for 429s."""
+    # Dry-run mode for testing without an API key or quota.
+    try:
+        if os.environ.get("RANKER_DRY_RUN", "0").lower() in ("1", "true", "yes"):
+            mock = {
+                "results": [
+                    {
+                        "ticker": "WIPRO",
+                        "title": "Dry-run mock signal",
+                        "url": None,
+                        "published": None,
+                        "age": "5m",
+                        "confidence": 0.95,
+                        "impact_score": 0.7,
+                        "trend": "bullish",
+                    }
+                ]
+            }
+            return json.dumps(mock)
+    except Exception:
+        pass
+
+    model = RANKING_MODEL
+
+
     attempt = 0
     while attempt <= RANKING_MAX_RETRIES:
-        try:
-            start = time.time()
-            response = await asyncio.wait_for(
-                CLIENT.aio.models.generate_content(
-                    model=RANKING_MODEL,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json"
+
+            try:
+                start = time.time()
+                response = await asyncio.wait_for(
+                    CLIENT.aio.models.generate_content(
+                        model=model,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json"
+                        ),
                     ),
-                ),
-                timeout=RANKING_TIMEOUT,
-            )
-            
-            usage = getattr(response, "usage_metadata", None)
-            if usage:
-                stats = extract_context_usage(RANKING_MODEL, usage)
-                log_token_usage(
-                    model=RANKING_MODEL,
-                    prompt_tokens=stats["input_tokens"],
-                    completion_tokens=stats["output_tokens"],
-                    thought_tokens=stats.get("thought_tokens", 0),
-                    total_tokens=stats["total_tokens"],
-                    context_limit=stats["context_limit"],
+                    timeout=RANKING_TIMEOUT,
                 )
-                metrics.total_input_tokens += stats["input_tokens"]
-                metrics.total_output_tokens += stats["output_tokens"]
-                metrics.total_tokens += stats["total_tokens"]
 
-            latency = time.time() - start
-            metrics.latencies.append(latency)
-            metrics.request_timestamps.append(time.time())
-            
-            log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "SUCCESS")
-            metrics.api_calls_made += 1
-            return response.text
+                usage = getattr(response, "usage_metadata", None)
+                if usage:
+                    stats = extract_context_usage(model, usage)
+                    log_token_usage(
+                        model=model,
+                        prompt_tokens=stats["input_tokens"],
+                        completion_tokens=stats["output_tokens"],
+                        thought_tokens=stats.get("thought_tokens", 0),
+                        total_tokens=stats["total_tokens"],
+                        context_limit=stats["context_limit"],
+                    )
 
-        except Exception as e:
-            metrics.api_calls_made += 1
-            err_str = str(e)
-            
-            # Check for 429/Quota
-            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "REJECTED_429")
-                
-                if attempt < RANKING_MAX_RETRIES:
-                    attempt += 1
-                    backoff = RANKING_BACKOFF_BASE * (2 ** (attempt - 1))
-                    msg = f"  [Quota 429] Retrying in {backoff}s... (Attempt {attempt}/{RANKING_MAX_RETRIES})"
-                    print(msg)
-                    logger.warning(msg)
-                    await asyncio.sleep(backoff)
-                    continue
-                else:
-                    print("  [FATAL] Quota exhausted after all retries.")
-                    raise QuotaError("Quota exhausted")
+                metrics.total_input_tokens += stats["input_tokens"] if usage else 0
+                metrics.total_output_tokens += stats["output_tokens"] if usage else 0
+                metrics.total_tokens += stats["total_tokens"] if usage else 0
 
-            # Check for 403/Key revoked
-            if "403" in err_str or "PERMISSION_DENIED" in err_str:
-                log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "REJECTED_403_KEY_REVOKED")
-                print(f"  [FATAL] API Key revoked/leaked. Get a new key.")
+                latency = time.time() - start
+                metrics.latencies.append(latency)
+                metrics.request_timestamps.append(time.time())
+
+                log_api_usage(GEMINI_RANKER_API_KEY, model, "SUCCESS")
+                metrics.api_calls_made += 1
+                return response.text
+
+            except Exception as e:
+                metrics.api_calls_made += 1
+                err_str = str(e)
+
+                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "503" in err_str or "UNAVAILABLE" in err_str:
+                    log_api_usage(GEMINI_RANKER_API_KEY, model, "REJECTED_429_OR_503")
+                    if attempt < RANKING_MAX_RETRIES:
+                        attempt += 1
+                        backoff = RANKING_BACKOFF_BASE * (2 ** (attempt - 1))
+                        msg = f"  [API { '503' if '503' in err_str else '429' }] Retrying in {backoff}s... (Attempt {attempt}/{RANKING_MAX_RETRIES})"
+                        print(msg)
+                        logger.warning(msg)
+                        await asyncio.sleep(backoff)
+                        continue
+                    else:
+                        msg = f"  [API Error] Model {model} exhausted or unavailable after {RANKING_MAX_RETRIES} retries."
+                        print(msg)
+                        logger.warning(msg)
+                        return None
+
+
+
+                if "403" in err_str or "PERMISSION_DENIED" in err_str:
+                    log_api_usage(GEMINI_RANKER_API_KEY, model, "REJECTED_403_KEY_REVOKED")
+                    print(f"  [FATAL] API Key revoked/leaked. Get a new key.")
+                    return None
+
+                print(f"  [LLM Error] {e}")
                 return None
-            
-            print(f"  [LLM Error] {e}")
-            return None
     return None
 
 
 async def rank_news_payload(payload: Dict) -> Dict:
     """Main entry point: Batches mapped news and extracts tradable signals."""
     metrics = PipelineMetrics()
+
+    # Guard: agent may pass the observation as a JSON string
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            return {"error": "rank_news_payload received an unparseable string payload"}
+
+    if not isinstance(payload, dict):
+        return {"error": f"rank_news_payload expected a dict, got {type(payload).__name__}"}
+
     mapped = payload.get("mapped_news", {})
+
+    # Guard against None payloads from agent/tool chain
+
+    if mapped is None:
+        mapped = {}
+
+    if not isinstance(mapped, dict):
+        return {"error": f"mapped_news must be dict, got {type(mapped).__name__}"}
+
     all_tickers = list(mapped.keys())
     # Calculate total articles and sort tickers by news presence
     metrics.total_companies = len(all_tickers)

@@ -5,7 +5,8 @@ load_dotenv()
 
 # ── Ranking LLM Config ────────────────────────────────────────────────────────
 # Specific model identifier for the ranking/filtering stage
-RANKING_MODEL = os.getenv("RANKING_MODEL")
+RANKING_MODEL = os.getenv("RANKING_MODEL", "gemini-flash-latest")
+
 
 # -- Orchestration Parameters --
 RANKING_BATCH_SIZE = 10
@@ -34,5 +35,4 @@ STALE_THRESHOLD_MINS = 180       # 3 hours
 GEMINI_RANKER_API_KEY = os.getenv("GEMINI_RANKER_API_KEY", "")
 if not GEMINI_RANKER_API_KEY:
     raise ValueError("GEMINI_RANKER_API_KEY not found in .env — add it there, never hardcode it")
-
 

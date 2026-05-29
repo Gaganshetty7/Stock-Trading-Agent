@@ -1,4 +1,5 @@
 import json
+import os
 import uuid
 from abc import ABC, abstractmethod
 from typing import Any
@@ -9,7 +10,8 @@ from pydantic import BaseModel, Field
 from core.llm import get_llm
 from core.tool import get_tool, describe_tools
 from core.logger import get_logger, log_thought, log_action, log_observation, log_error, log_info
-from config.settings import MAX_REACT_ITERATIONS
+from config.settings import LLM_MODEL, MAX_REACT_ITERATIONS
+
 
 MAX_OBSERVATION_LENGTH = 8000
 
@@ -28,6 +30,7 @@ class BaseAgent(ABC):
         self.llm = get_llm()
         self.logger = get_logger(self.name)
         self._system_prompt: str | None = None
+
 
     @property
     @abstractmethod
@@ -62,50 +65,179 @@ class BaseAgent(ABC):
         return self._system_prompt
 
     async def run(self, task: dict[str, Any]) -> dict[str, Any]:
+
         run_id = str(uuid.uuid4())[:8]
+
         log_info(self.name, f"Starting run [{run_id}]")
 
-        structured_llm = self.llm.with_structured_output(ReActStep)
+
+        # Shortcut mode: skip LLM-driven planning and run the standard
+        # tool sequence directly. Useful for testing when LLM quota is exhausted.
+        if os.environ.get("AGENT_SKIP_LLM", "0").lower() in ("1", "true", "yes"):
+            try:
+                fetch_tool = get_tool("fetch_broad_market_rss")
+                rank_tool = get_tool("rank_news_payload")
+                # Default fetch window is 6 hours (same as run_test.py)
+                fetched = await fetch_tool(max_age_hours=6)
+                ranked = await rank_tool(payload=fetched)
+                output = self.parse_output(ranked)
+                return {"status": "completed", "output": output}
+            except Exception as e:
+                log_error(self.name, f"Skip-LLM run failed: {e}")
+                return {"status": "failed", "error": str(e)}
 
         messages = [
             SystemMessage(content=self._build_system_prompt()),
             HumanMessage(content=json.dumps(task)),
         ]
 
+        last_tool_result = None
+
         for iteration in range(MAX_REACT_ITERATIONS):
+
             log_info(self.name, f"Iteration {iteration + 1}")
+            structured_llm = self.llm.with_structured_output(ReActStep)
 
             try:
                 step: ReActStep = await structured_llm.ainvoke(messages)
+
             except Exception as e:
+                err_str = str(e)
+                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                    log_error(self.name, f"LLM quota exhausted: {e}")
+                    return {
+                        "status": "failed",
+                        "error": "LLM Quota Exhausted (429)"
+                    }
+
+
                 log_error(self.name, f"LLM call failed: {e}")
-                return {"status": "failed", "error": str(e)}
+
+                return {
+                    "status": "failed",
+                    "error": str(e)
+                }
 
             log_thought(self.name, step.thought)
             log_action(self.name, step.action, step.action_input or {})
 
+            # ─────────────────────────────────────────────
+            # FINISH
+            # ─────────────────────────────────────────────
             if step.action == "FINISH":
-                final_output = step.final_output or step.action_input or {}
-                output = self.parse_output(final_output)
-                log_info(self.name, f"Run [{run_id}] completed.")
-                return {"status": "completed", "output": output}
 
-            observation = await self._call_tool(step.action, step.action_input or {})
+                # Priority 1: Raw tool results with signals (matches run_test.py pattern)
+                # Priority 2: Structured LLM output (if no tool result or specially formatted)
+                final_output = step.final_output or {}
+                if last_tool_result and isinstance(last_tool_result, dict) and "signals" in last_tool_result:
+                    final_output = last_tool_result
+                elif not final_output:
+                    final_output = last_tool_result or step.action_input or {}
+
+
+
+                output = self.parse_output(final_output)
+
+                log_info(
+                    self.name,
+                    f"Run [{run_id}] completed."
+                )
+
+                return {
+                    "status": "completed",
+                    "output": output
+                }
+
+            # ─────────────────────────────────────────────
+            # AUTO TOOL CHAINING
+            # ─────────────────────────────────────────────
+            if (
+                step.action == "rank_news_payload"
+                and last_tool_result is not None
+            ):
+
+                # Prefer the most recent written mapped_news file if the
+                # in-memory last_tool_result has empty or null mapped_news.
+                payload_to_pass = last_tool_result
+
+                try:
+                    mapped = None
+                    if isinstance(last_tool_result, dict):
+                        mapped = last_tool_result.get("mapped_news")
+
+                    if mapped is None or (isinstance(mapped, dict) and len(mapped) == 0):
+                        from pathlib import Path
+
+                        outputs_dir = Path("outputs")
+                        candidates = sorted(outputs_dir.glob("mapped_news_*.json"))
+                        if candidates:
+                            latest = candidates[-1]
+                            try:
+                                with open(latest, "r", encoding="utf-8") as fh:
+                                    payload_to_pass = json.load(fh)
+                            except Exception:
+                                payload_to_pass = last_tool_result
+
+                except Exception:
+                    payload_to_pass = last_tool_result
+
+                step.action_input = {"payload": payload_to_pass}
+
+    # ─────────────────────────────────────────────
+    # CALL TOOL
+    # ─────────────────────────────────────────────
+            observation = await self._call_tool(
+                step.action,
+                step.action_input or {}
+            )
+
             log_observation(self.name, observation)
 
-            messages.append(AIMessage(content=step.model_dump_json()))
-            messages.append(HumanMessage(content=f"Observation: {observation}"))
+            # ─────────────────────────────────────────────
+            # SAVE RAW RESULT
+            # ─────────────────────────────────────────────
+            try:
 
-        log_error(self.name, f"Run [{run_id}] hit max iterations.")
-        return {"status": "max_iterations", "error": "Max iterations reached"}
+                last_tool_result = (
+                    json.loads(observation)
+                    if isinstance(observation, str)
+                    else observation
+                )
+
+            except Exception:
+
+                last_tool_result = observation
+
+            # ─────────────────────────────────────────────
+            # CHAT HISTORY
+            # ─────────────────────────────────────────────
+            messages.append(
+                AIMessage(content=step.model_dump_json())
+            )
+
+            messages.append(
+                HumanMessage(
+                    content=f"Observation: {observation[:MAX_OBSERVATION_LENGTH]}"
+                )
+            )
+
+        log_error(
+            self.name,
+            f"Run [{run_id}] hit max iterations."
+        )
+
+        return {
+    "status": "max_iterations",
+    "error": "Max iterations reached"
+}
+
 
     async def _call_tool(self, name: str, inputs: dict[str, Any]) -> str:
         try:
             tool = get_tool(name)
             result = await tool(**inputs)
             serialized = json.dumps(result) if not isinstance(result, str) else result
-            if len(serialized) > MAX_OBSERVATION_LENGTH:
-                serialized = serialized[:MAX_OBSERVATION_LENGTH] + "\n...[truncated]"
+            # Return full serialized result so callers can parse it safely.
             return serialized
         except KeyError as e:
             return str(e)
