@@ -66,6 +66,10 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
         formatted_tickers, period="5d", interval="5m",
         auto_adjust=True, progress=False
     )
+    data_15m = yf.download(
+        formatted_tickers, period="5d", interval="15m",
+        auto_adjust=True, progress=False
+    )
 
     results = {}
     for ticker in formatted_tickers:
@@ -74,12 +78,14 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
                 # Single ticker: yfinance returns flat columns (Close, Open, etc.)
                 ticker_1m = data_1m.copy()
                 ticker_5m = data_5m.copy()
+                ticker_15m = data_15m.copy()
             else:
                 # Multiple tickers: yfinance returns MultiIndex (Price, Ticker)
                 ticker_1m = data_1m.xs(ticker, axis=1, level=1).copy()
                 ticker_5m = data_5m.xs(ticker, axis=1, level=1).copy()
+                ticker_15m = data_15m.xs(ticker, axis=1, level=1).copy()
 
-            results[ticker] = process_stock(ticker, ticker_1m, ticker_5m)
+            results[ticker] = process_stock(ticker, ticker_1m, ticker_5m, ticker_15m)
         except Exception as e:
             results[ticker] = {
                 "stock": ticker,
