@@ -2,6 +2,8 @@ import asyncio
 import json
 import time
 from datetime import datetime, timezone
+import os
+import glob
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -157,7 +159,7 @@ async def call_llm(
 # MAIN RANKER
 # ─────────────────────────────────────────────────────────────
 
-async def rank_news_payload(payload: Dict) -> Dict:
+async def rank_news_payload(payload: Optional[Dict] = None, payload_file: Optional[str] = None) -> Dict:
     pipeline_start = time.time()
     metrics = PipelineMetrics()
     
@@ -165,7 +167,31 @@ async def rank_news_payload(payload: Dict) -> Dict:
     logger.info("Starting Intraday Signal Extraction (Stage 2)")
     logger.debug("[RANKER] Started")
 
-    # 1. Validation
+    # 1. Load Payload
+    # If no payload or file provided, or if specifically requested, find the latest mapped news
+    if not payload and not payload_file:
+        logger.info("No payload provided. Searching for latest mapped news in outputs/...")
+        files = glob.glob("outputs/mapped_news_*.json")
+        if files:
+            payload_file = max(files, key=os.path.getctime)
+            logger.info(f"Auto-discovered latest payload: {payload_file}")
+        else:
+            logger.error("No mapped news files found in outputs/")
+            return {"error": "No payload provided and no mapped_news_*.json found in outputs/"}
+
+    if payload_file:
+        try:
+            with open(payload_file, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            logger.info(f"Loaded payload from file: {payload_file}")
+        except Exception as e:
+            logger.error(f"Failed to load payload_file {payload_file}: {e}")
+            return {"error": f"Failed to load payload_file: {e}"}
+
+    # Validation
+    if payload is None:
+        return {"error": "No payload or payload_file provided to rank_news_payload"}
+
     if isinstance(payload, str):
         try:
             payload = json.loads(payload)
