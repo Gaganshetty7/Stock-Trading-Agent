@@ -65,8 +65,22 @@ def log_thought(agent_name: str, thought: str) -> None:
 
 
 def log_action(agent_name: str, tool: str, inputs: dict) -> None:
-    console.print(f"[action] [{agent_name}] ACTION:[/action] [bold]{tool}[/bold] → {inputs}")
+    # Summary logic for large inputs
+    input_str = str(inputs)
+    if len(input_str) > 200:
+        if isinstance(inputs, dict) and "payload" in inputs:
+            p = inputs["payload"]
+            if isinstance(p, dict) and "mapped_news" in p:
+                count = len(p.get("mapped_news", {}))
+                input_str = f"{{'payload': '[News Payload] {count} companies'}} "
+            else:
+                input_str = f"{{'payload': '... {len(str(p))} chars ...'}} "
+        else:
+            input_str = input_str[:200] + "..."
+
+    console.print(f"[action] [{agent_name}] ACTION:[/action] [bold]{tool}[/bold] → {input_str}")
     _agent_logger.debug("[%s] ACTION: %s | inputs: %s", agent_name, tool, inputs)
+
 
 
 def log_observation(agent_name: str, observation: str) -> None:
