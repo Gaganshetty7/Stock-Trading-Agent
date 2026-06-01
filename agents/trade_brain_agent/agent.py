@@ -26,6 +26,10 @@ class TradeBrainAgent(BaseAgent):
     def tool_names(self) -> list[str]:
         return []
 
+    @property
+    def output_schema(self) -> Any:
+        return TradePlan
+
     def parse_output(self, final_output: dict[str, Any]) -> Any:
         """
         Validate the LLM's final output against the TradePlan schema.

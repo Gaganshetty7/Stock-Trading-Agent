@@ -133,23 +133,13 @@ async def main():
     }
 
     print("\nStarting Trade Brain Agent analysis...")
-    schema_definition = TradePlan.schema_json()
-    
     final_results = {}
 
     for symbol, data in technical_data.items():
         print(f"Analyzing {symbol}...")
         
-        # We wrap the payload to explicitly demand the Pydantic JSON schema format
-        # This prevents "silent failures" where the LLM hallucinates fields or returns {}
-        task = {
-            "instruction": "Analyze the technical data and provide a trade plan.",
-            "data": data,
-            "required_output_schema": json.loads(schema_definition)
-        }
-
         try:
-            result = await agent.run(task)
+            result = await agent.run(data)
             if result["status"] == "completed":
                 final_results[symbol] = result["output"]
             else:
