@@ -1,7 +1,6 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any
 
 LOG_FILE = Path("logs/token_usage/token_usage.jsonl")
 

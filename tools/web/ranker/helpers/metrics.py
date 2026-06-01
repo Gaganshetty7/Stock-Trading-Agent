@@ -27,7 +27,6 @@ class PipelineMetrics:
     api_calls_made: int = 0
     success_count: int = 0
     failure_count: int = 0
-    quota_skipped: int = 0
     
     parse_failures: int = 0
     validation_failures: int = 0
@@ -40,8 +39,6 @@ class PipelineMetrics:
     latencies: List[float] = field(default_factory=list)
 
     request_timestamps: List[float] = field(default_factory=list)
-
-    total_stagger_wait_seconds: float = 0.0
 
     # ─────────────────────────────
     # TOKEN TRACKING
@@ -95,7 +92,6 @@ class PipelineMetrics:
             f"API Calls Made            : {self.api_calls_made}",
             f"  - Successes             : {self.success_count}",
             f"  - Failures              : {self.failure_count}",
-            f"  - Quota Skips           : {self.quota_skipped}",
 
             f"Parse Failures            : {self.parse_failures}",
             f"Validation Failures       : {self.validation_failures}",
@@ -110,7 +106,6 @@ class PipelineMetrics:
             f"Peak Requests / Min       : {peak_rpm}",
 
             f"Total LLM Time            : {sum(self.latencies):.2f}s",
-            f"Total Stagger Wait Time   : {self.total_stagger_wait_seconds:.2f}s",
 
             "-" * 60,
 
@@ -182,15 +177,12 @@ class PipelineMetrics:
 
             "config": {
                 "batch_size": 10,
-                "concurrency": 1,
-                "stagger_delay_seconds": 6.0,
             },
 
             "api_summary": {
                 "total_calls_attempted": self.api_calls_made,
                 "success_count": self.success_count,
                 "failure_count": self.failure_count,
-                "quota_skipped_count": self.quota_skipped,
                 
                 "requests_per_minute_average": round(rpm_avg, 2),
                 "peak_requests_per_minute": self.calculate_peak_rpm(),
@@ -199,8 +191,6 @@ class PipelineMetrics:
                 "fastest_llm_call_seconds": round(fastest, 2),
                 "slowest_llm_call_seconds": round(slowest, 2),
                 "total_llm_processing_seconds": round(sum(self.latencies), 2),
-                
-                "total_stagger_wait_seconds": round(self.total_stagger_wait_seconds, 2),
                 
                 "parse_failures": self.parse_failures,
                 "validation_failures": self.validation_failures,

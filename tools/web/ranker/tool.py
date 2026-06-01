@@ -1,165 +1,35 @@
-import asyncio
 import json
 import time
 from datetime import datetime, timezone
 import os
 import glob
-from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
-import pytz
-from dotenv import load_dotenv
-from google import genai
-from google.genai import types
-
-from .api_quota_tracker.quota_tracker import log_api_usage, get_today_usage, log_quota_attempt
+from .api_quota_tracker.quota_tracker import log_quota_attempt
 from .helpers.settings import (
     RANKING_MODEL,
     RANKING_BATCH_SIZE,
-    RANKING_CONCURRENCY,
-    RANKING_STAGGER_DELAY,
-    RANKING_TIMEOUT,
-    RANKING_MAX_RETRIES,
-    RANKING_BACKOFF_BASE,
-    MAX_TITLE_LEN,
     TOP_N_ARTICLES,
     MIN_CONFIDENCE,
     MIN_IMPACT,
-    GEMINI_RANKER_API_KEY,
 
     MARKET_CLOSED_MULTIPLIER,
     STALE_DECAY_MULTIPLIER,
-    STALE_THRESHOLD_MINS
+    STALE_THRESHOLD_MINS,
 )
 
 # Modular ranker components
-from .helpers.schemas import ScoredArticle, BatchResponse
-from .helpers.utils import QuotaError, robust_json_parser, truncate, logger
+from .helpers.utils import logger
 from .helpers.market_helpers import is_market_open, parse_age_to_mins
-from .helpers.prompts import RANK_PROMPT
 from .helpers.metrics import PipelineMetrics
-from .token_tracker import extract_context_usage
-from .token_tracker import log_token_usage
-
-load_dotenv()
-
-# ─────────────────────────────────────────────────────────────
-# GEMINI CLIENT
-# ─────────────────────────────────────────────────────────────
-
-CLIENT = genai.Client(api_key=GEMINI_RANKER_API_KEY)
-
-# ─────────────────────────────────────────────────────────────
-# OUTPUT SAVER
-# ─────────────────────────────────────────────────────────────
-
-def save_ranker_output(
-    output_data: Dict,
-    output_subdir: str = "outputs/ranker",
-    elapsed_time: Optional[float] = None,
-) -> str:
-    """
-    Save final ranker output to JSON.
-    """
-    ist = pytz.timezone("Asia/Kolkata")
-    timestamp = datetime.now(ist).strftime("%Y%m%d_%H%M%S")
-
-    output_dir = Path(output_subdir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    output_file = output_dir / f"intraday_signals_{timestamp}.json"
-
-    if elapsed_time is not None:
-        output_data.setdefault("metadata", {})
-        output_data["metadata"]["pipeline_time_seconds"] = round(elapsed_time, 2)
-
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(output_data, f, indent=2, ensure_ascii=False)
-
-    logger.info(f"Saved ranker output → {output_file}")
-    logger.info("=" * 60)
-    return str(output_file)
-
-# ─────────────────────────────────────────────────────────────
-# LLM CALL
-# ─────────────────────────────────────────────────────────────
-
-async def call_llm(
-    prompt: str,
-    metrics: PipelineMetrics,
-) -> Optional[str]:
-
-    attempt = 0
-
-    while attempt <= RANKING_MAX_RETRIES:
-        try:
-            start = time.time()
-            response = await asyncio.wait_for(
-                CLIENT.aio.models.generate_content(
-                    model=RANKING_MODEL,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                    ),
-                ),
-                timeout=RANKING_TIMEOUT,
-            )
-            
-            usage = getattr(response, "usage_metadata", None)
-            if usage:
-                stats = extract_context_usage(RANKING_MODEL, usage)
-                log_token_usage(
-                    model=RANKING_MODEL,
-                    prompt_tokens=stats["input_tokens"],
-                    completion_tokens=stats["output_tokens"],
-                    thought_tokens=stats.get("thought_tokens", 0),
-                    total_tokens=stats["total_tokens"],
-                    context_limit=stats["context_limit"],
-                )
-
-                metrics.total_input_tokens += stats["input_tokens"]
-                metrics.total_output_tokens += stats["output_tokens"]
-                metrics.total_tokens += stats["total_tokens"]
-
-            latency = time.time() - start
-            metrics.latencies.append(latency)
-            metrics.request_timestamps.append(time.time())
-            
-            log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "SUCCESS")
-            metrics.api_calls_made += 1
-            return response.text
-
-        except Exception as e:
-            metrics.api_calls_made += 1
-            err_str = str(e)
-
-            if any(x in err_str for x in ["429", "RESOURCE_EXHAUSTED", "503", "UNAVAILABLE"]):
-                log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "REJECTED_429_OR_503")
-
-                if attempt < RANKING_MAX_RETRIES:
-                    attempt += 1
-                    backoff = RANKING_BACKOFF_BASE * (2 ** (attempt - 1))
-                    logger.debug(f"[API RETRY] Waiting {backoff}s...")
-                    await asyncio.sleep(backoff)
-                    continue
-                else:
-                    logger.error("[API ERROR] Max retries exhausted")
-                    return None
-
-            # Check for 403/Key revoked
-            if "403" in err_str or "PERMISSION_DENIED" in err_str:
-                logger.error("[FATAL] API key invalid/revoked")
-                return None
-
-            logger.error(f"[LLM ERROR] {e}")
-            return None
-    return None
+from .llm import run_batch
+from .output import save_ranker_output
 
 # ─────────────────────────────────────────────────────────────
 # MAIN RANKER
 # ─────────────────────────────────────────────────────────────
 
-async def rank_news_payload(payload: Optional[Dict] = None, payload_file: Optional[str] = None) -> Dict:
+async def rank_news_payload(payload: Optional[Dict] = None, payload_file: Optional[str] = None, **kwargs) -> Dict:
     pipeline_start = time.time()
     metrics = PipelineMetrics()
     
@@ -168,6 +38,10 @@ async def rank_news_payload(payload: Optional[Dict] = None, payload_file: Option
     logger.debug("[RANKER] Started")
 
     # 1. Load Payload
+    # Allow callers to pass payload fields as kwargs (e.g., metadata=..., mapped_news=...)
+    if not payload and kwargs:
+        payload = kwargs
+
     # If no payload or file provided, or if specifically requested, find the latest mapped news
     if not payload and not payload_file:
         logger.info("No payload provided. Searching for latest mapped news in outputs/...")
@@ -211,6 +85,141 @@ async def rank_news_payload(payload: Optional[Dict] = None, payload_file: Option
     if not isinstance(mapped, dict):
         return {"error": f"mapped_news must be dict, got {type(mapped).__name__}"}
 
+    def _extract_total_companies(payload_dict):
+        metadata = payload_dict.get("metadata", {})
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except json.JSONDecodeError:
+                return None
+        if not isinstance(metadata, dict):
+            return None
+        total = metadata.get("total_companies") or metadata.get("companies")
+        try:
+            return int(total)
+        except (TypeError, ValueError):
+            return None
+
+    def _payload_looks_truncated(m):
+        if not isinstance(m, dict):
+            return False
+
+        for val in m.values():
+            if isinstance(val, str) and val.strip() == "...":
+                return True
+
+            if isinstance(val, dict):
+                insights = val.get("company_insights")
+                if isinstance(insights, list):
+                    for item in insights:
+                        if isinstance(item, str) and item.strip() == "...":
+                            return True
+                        if isinstance(item, dict):
+                            title = str(item.get("title", "")).strip()
+                            if title == "...":
+                                return True
+        return False
+
+    def _should_fallback_to_file():
+        total_companies = _extract_total_companies(payload)
+        if total_companies and len(mapped) < total_companies:
+            logger.warning(
+                "[PAYLOAD] mapped_news contains fewer tickers than metadata.total_companies; "
+                "assuming truncated agent handoff."
+            )
+            return True
+        return _payload_looks_truncated(mapped)
+
+    if _should_fallback_to_file():
+        logger.warning(
+            "[PAYLOAD] detected truncated mapped_news payload; attempting stage-2 file fallback."
+        )
+        if not payload_file:
+            files = glob.glob("outputs/mapped_news_*.json")
+            if files:
+                payload_file = max(files, key=os.path.getctime)
+                logger.info(f"Falling back to latest mapped_news file: {payload_file}")
+                try:
+                    with open(payload_file, "r", encoding="utf-8") as f:
+                        payload = json.load(f)
+                    mapped = payload.get("mapped_news", {})
+                    if isinstance(mapped, str):
+                        try:
+                            mapped = json.loads(mapped)
+                        except json.JSONDecodeError:
+                            return {"error": "Fallback mapped_news is invalid JSON string"}
+                    if not isinstance(mapped, dict):
+                        return {"error": f"Fallback mapped_news must be dict, got {type(mapped).__name__}"}
+                except Exception as e:
+                    logger.error(f"Failed to load fallback payload_file {payload_file}: {e}")
+                    return {"error": f"Failed to load fallback payload_file: {e}"}
+            else:
+                logger.error("No fallback mapped_news files found in outputs/")
+                return {"error": "Detected truncated payload and no fallback mapped_news file found."}
+
+    # Normalize mapped_news into consistent structure:
+    # { ticker: { "company_insights": [ {title, link, published_date, age, ...}, ... ] } }
+    def _normalize_mapped(m):
+        out = {}
+        for ticker, val in m.items():
+            # If already in expected shape, keep it
+            if isinstance(val, dict) and isinstance(val.get("company_insights"), list):
+                out[ticker] = val
+                continue
+
+            # If value is a list, it may be list of strings (titles) or list of article dicts
+            if isinstance(val, list):
+                insights = []
+                for item in val:
+                    if isinstance(item, str):
+                        insights.append({
+                            "title": item,
+                            "source": None,
+                            "link": "",
+                            "published_date": "",
+                            "age": "stale",
+                        })
+                    elif isinstance(item, dict):
+                        # normalize keys
+                        article = dict(item)
+                        # prefer 'url' then 'link'
+                        if "url" not in article and "link" in article:
+                            article["url"] = article.get("link")
+                        insights.append(article)
+                out[ticker] = {"company_insights": insights}
+                continue
+
+            # If value is a single string, treat as single title
+            if isinstance(val, str):
+                if val == "...":
+                    logger.warning(f"[NORMALIZE] {ticker} contains truncated payload")
+                    out[ticker] = {"company_insights": []}
+                    continue
+
+                out[ticker] = {"company_insights": [{"title": val, "source": None, "link": "", "published_date": "", "age": "stale"}]}
+                continue
+
+            # Fallback to empty
+            out[ticker] = {"company_insights": []}
+
+        return out
+
+    mapped = _normalize_mapped(mapped)
+
+    # Filter out malformed or truncated insights before ranking
+    for ticker, data in mapped.items():
+        insights = data.get("company_insights", [])
+        insights = [
+            x for x in insights
+            if isinstance(x, dict)
+            and x.get("title")
+            and x.get("title") != "..."
+            and len(str(x.get("title", "")).strip()) > 20
+        ]
+        if len(insights) != len(data.get("company_insights", [])):
+            logger.warning(f"[FILTER] {ticker} had invalid or truncated company_insights removed")
+        data["company_insights"] = insights
+
     all_tickers = list(mapped.keys())
     metrics.total_companies = len(all_tickers)
     metrics.total_articles_in = sum(len(mapped[t].get("company_insights", [])) for t in all_tickers)
@@ -225,69 +234,15 @@ async def rank_news_payload(payload: Optional[Dict] = None, payload_file: Option
     batches = [all_tickers[i : i + RANKING_BATCH_SIZE] for i in range(0, len(all_tickers), RANKING_BATCH_SIZE)]
     final_results = []
 
-    async def run_batch(batch_tickers: List[str], batch_index: int):
-        batch_start = time.time()
-        logger.debug(f"[BATCH {batch_index+1}] Starting")
-
-        llm_payload = []
-        for ticker in batch_tickers:
-            insights = mapped.get(ticker, {}).get("company_insights", [])
-            for article in insights:
-                llm_payload.append({
-                    "ticker": ticker,
-                    "title": article.get("title", ""),
-                    "published": article.get("published_date", "N/A"),
-                    "age": article.get("age", "stale"),
-                })
-
-        if not llm_payload:
-            return None, None, "empty"
-
-        prompt = RANK_PROMPT.replace(
-            "{current_time}",
-            datetime.now(timezone.utc).strftime("%I:%M %p UTC"),
-        ).replace(
-            "{payload}",
-            json.dumps(llm_payload, indent=1),
-        )
-
-        try:
-            raw_response = await call_llm(prompt, metrics)
-            if not raw_response:
-                return None, None, "llm_empty"
-
-            parsed = robust_json_parser(raw_response)
-            if not parsed:
-                metrics.parse_failures += 1
-                return None, None, "parse_fail"
-
-            # Rescaling Gate: LLM sometimes uses 0-10 instead of 0-1
-            if "results" in parsed and isinstance(parsed["results"], list):
-                for art in parsed["results"]:
-                    for key in ["confidence", "impact_score"]:
-                        if key in art and isinstance(art[key], (int, float)):
-                            val = float(art[key])
-                            if val > 1.0:
-                                art[key] = round(val / 10.0, 2)
-                            else:
-                                art[key] = round(val, 2)
-
-            validated = BatchResponse(**parsed)
-            metrics.success_count += 1
-            
-            batch_time = time.time() - batch_start
-            logger.debug(f"[BATCH {batch_index+1}] Success in {batch_time:.2f}s")
-            return raw_response, validated, "success"
-
-        except Exception as e:
-            metrics.failure_count += 1
-            logger.error(f"[BATCH {batch_index+1}] ERROR: {e}")
-            return None, None, "error"
-
     # 3. Execution
     for i, batch_tickers in enumerate(batches):
         log_quota_attempt(RANKING_MODEL, "START")
-        raw, validated, status = await run_batch(batch_tickers, i)
+        validated, status = await run_batch(
+            batch_tickers=batch_tickers,
+            batch_index=i,
+            mapped=mapped,
+            metrics=metrics,
+        )
 
         if status != "success" or not validated:
             continue
@@ -317,6 +272,22 @@ async def rank_news_payload(payload: Optional[Dict] = None, payload_file: Option
             articles.sort(key=lambda x: (x.impact_score, x.confidence), reverse=True)
             for article in articles[:TOP_N_ARTICLES]:
                 signal = article.model_dump()
+                url_value = signal.get("url") or getattr(article, "url", None)
+                if isinstance(url_value, str) and not url_value.strip():
+                    url_value = None
+                if url_value:
+                    signal["url"] = url_value
+                elif "url" in signal:
+                    signal.pop("url", None)
+
+                published_value = signal.get("published") or getattr(article, "published", None)
+                if isinstance(published_value, str) and not published_value.strip():
+                    published_value = None
+                if published_value:
+                    signal["published"] = published_value
+                elif "published" in signal:
+                    signal.pop("published", None)
+
                 signal["confidence"] = float(signal.get("confidence", 0.0))
                 signal["impact_score"] = float(signal.get("impact_score", 0.0))
                 
@@ -328,9 +299,6 @@ async def rank_news_payload(payload: Optional[Dict] = None, payload_file: Option
                 final_results.append(signal)
                 metrics.total_articles_out += 1
 
-        if i < len(batches) - 1:
-            pass
-
     # 4. Finalization
     logger.info("=" * 60)
     logger.info(f"Extraction complete — {len(final_results)} signals found")
@@ -338,10 +306,18 @@ async def rank_news_payload(payload: Optional[Dict] = None, payload_file: Option
     metrics.companies_removed = metrics.total_companies - metrics.companies_with_signal
 
     run_status = "success"
-    if metrics.quota_skipped > 0:
-        run_status = "denied (quota hits)" if metrics.companies_with_signal == 0 else "partial (quota hits)"
-    elif metrics.total_companies > 0 and metrics.companies_with_signal == 0:
+    if metrics.total_companies > 0 and metrics.companies_with_signal == 0:
         run_status = "no_signals_found"
+
+    signals_by_ticker = {}
+    for signal in final_results:
+        ticker = signal.get("ticker")
+        if not ticker:
+            continue
+        signals_by_ticker.setdefault(ticker, {
+            "ticker": ticker,
+            "company_insights": [],
+        })["company_insights"].append(signal)
 
     final_result = {
         "metadata": {
@@ -350,12 +326,15 @@ async def rank_news_payload(payload: Optional[Dict] = None, payload_file: Option
             "companies_with_signal": metrics.companies_with_signal,
             "companies_removed": metrics.companies_removed,
             "total_articles_kept": metrics.total_articles_out,
-            "quota_skips": metrics.quota_skipped,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         },
-        "results": final_results,
+        "signals": signals_by_ticker,
     }
 
     # 5. Save and Return
-    save_ranker_output(final_result, elapsed_time=time.time() - pipeline_start)
+    save_ranker_output(
+        final_result,
+        elapsed_time=time.time() - pipeline_start,
+        metrics=metrics,
+    )
     return final_result

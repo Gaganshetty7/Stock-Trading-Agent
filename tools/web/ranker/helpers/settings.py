@@ -1,13 +1,11 @@
-import asyncio
 import os
-import time
 from math import ceil
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # ── Model ─────────────────────────────────────────────────────────────────────
-RANKING_MODEL = os.getenv("RANKING_MODEL", "gemini-3.1-flash-lite")
+RANKING_MODEL = os.getenv("RANKING_MODEL", )
 
 # ── Confirmed Free Tier Limits ────────────────────────────────────────────────
 RPM_HARD_LIMIT = 15
@@ -17,11 +15,6 @@ SAFE_RPM = 14
 
 # ── Orchestration ─────────────────────────────────────────────────────────────
 RANKING_BATCH_SIZE   = 10
-
-# Concurrency overlaps network latency only.
-# Rate limiter still guarantees max 14 RPM.
-RANKING_CONCURRENCY  = 4
-RANKING_STAGGER_DELAY = 1.0  # Seconds between concurrent requests
 
 RANKING_TIMEOUT      = 35
 RANKING_MAX_RETRIES  = 1
@@ -46,47 +39,7 @@ GEMINI_RANKER_API_KEY = os.getenv("GEMINI_RANKER_API_KEY", "")
 if not GEMINI_RANKER_API_KEY:
     raise ValueError("GEMINI_RANKER_API_KEY not set in .env")
 
-API_KEY_POOL = [GEMINI_RANKER_API_KEY]
-
-
-# ── Fixed Interval Rate Limiter ──────────────────────────────────────────────
-
-class FixedIntervalRateLimiter:
-    """
-    Strict fixed-interval async limiter.
-
-    Guarantees:
-      - Requests launch at least 60/rpm seconds apart
-      - No burst spikes
-      - No drift accumulation
-      - Safe under concurrency
-    """
-
-    def __init__(self, rpm: int):
-        self._delay = 60.0 / rpm
-        self._last_fired = 0.0
-        self._lock = asyncio.Lock()
-
-    async def acquire(self):
-        async with self._lock:
-            now = time.monotonic()
-
-            elapsed = now - self._last_fired
-            wait = self._delay - elapsed
-
-            if wait > 0:
-                await asyncio.sleep(wait)
-
-            self._last_fired = time.monotonic()
-
-    async def __aenter__(self):
-        await self.acquire()
-
-    async def __aexit__(self, *_):
-        pass
-
-rate_limiter = FixedIntervalRateLimiter(rpm=SAFE_RPM)
-
+GEMINI_KEYS = [GEMINI_RANKER_API_KEY]
 
 # ── Quota Math ────────────────────────────────────────────────────────────────
 
@@ -102,7 +55,6 @@ def quota_summary(total_companies: int = 340) -> dict:
     return {
         "model": RANKING_MODEL,
         "rpm_safe": SAFE_RPM,
-        "concurrency": RANKING_CONCURRENCY,
         "total_companies": total_companies,
         "batches": batches,
         "interval_delay_s": round(interval_delay, 2),
@@ -119,7 +71,6 @@ def print_quota_summary(total_companies: int = 340):
     print("─" * 50)
     print(f"Model:             {s['model']}")
     print(f"Safe RPM:          {s['rpm_safe']}/{RPM_HARD_LIMIT}")
-    print(f"Concurrency:       {s['concurrency']}")
     print(f"Companies:         {s['total_companies']} → {s['batches']} batches")
     print(f"Queue pacing:      {s['interval_delay_s']}s between launches")
     print(f"Requests/run:      {s['requests_per_run']}")

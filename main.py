@@ -2,6 +2,7 @@ import asyncio
 from core.tool import init_tools
 from agents.stock_news_agent import StockNewsAgent
 
+
 async def main():
     # Initialise tool registry
     init_tools()
@@ -27,6 +28,7 @@ async def main():
             
     except Exception as e:
         print(f"\n! Error running agent: {e}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
