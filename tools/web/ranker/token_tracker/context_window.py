@@ -26,14 +26,12 @@ def extract_context_usage(model: str, usage: Any) -> Dict:
         }
 
     # ── Core tokens ─────────────────────────────
-    input_tokens = int(getattr(usage, "prompt_token_count", 0) or 0)
-    output_tokens = int(getattr(usage, "candidates_token_count", 0) or 0)
-    thought_tokens = int(getattr(usage, "thoughts_token_count", 0) or 0)
+    input_tokens = getattr(usage, "prompt_token_count", 0)
+    output_tokens = getattr(usage, "candidates_token_count", 0)
+    thought_tokens = getattr(usage, "thoughts_token_count", 0)
 
     # Some SDK versions already include everything in total
     api_total = getattr(usage, "total_token_count", None)
-    if api_total is not None:
-        api_total = int(api_total or 0)
 
     # Recompute safe total (more accurate for debugging)
     computed_total = input_tokens + output_tokens + thought_tokens
