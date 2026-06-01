@@ -54,7 +54,6 @@ def init_tools() -> None:
     register_tool(
         "rank_news_payload",
         rank_news_payload,
-        "Processes a large collection of raw market news articles to extract high-confidence "
-        "intraday signals. Filters news for market relevance, impact, and freshness. "
-        "Input: payload (dict) containing 'mapped_news' tree. Returns structured tradable signals.",
+        "Processes a mapped-news JSON file to extract high-confidence intraday signals. "
+        "Input: payload_file (str) path to mapped_news_YYYYMMDD_HHMMSS.json. Returns structured tradable signals.",
     )

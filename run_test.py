@@ -23,7 +23,8 @@ async def run_pipeline():
     print("[STAGE 2] Running Intraday Signal Extraction...")
     from tools.web.ranker.tool import rank_news_payload
 
-    final_payload = await rank_news_payload(payload)
+    payload_file = payload.get("payload_file") if isinstance(payload, dict) else None
+    final_payload = await rank_news_payload(payload_file=payload_file)
     
     # SAVE FINAL RESULT
     elapsed = round(time.perf_counter() - start_time, 2)
