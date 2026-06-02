@@ -5,6 +5,7 @@ from rich.theme import Theme
 from rich.panel import Panel
 from pathlib import Path
 from rich.text import Text
+from typing import Optional, Union
 from config.settings import BASE_DIR
 from datetime import datetime
 
@@ -20,28 +21,60 @@ _theme = Theme({
 
 console = Console(theme=_theme)
 
+# ── Shared log format ─────────────────────────────────────────────────────────
+_LOG_FMT = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
+
 # ── Run log file (one per run, shared across all loggers) ─────────────────────
 _log_dir = Path(BASE_DIR) / "logs"
 _log_dir.mkdir(parents=True, exist_ok=True)  # ensure directory exists before opening file
 _run_log_file = _log_dir / f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.log"
 _file_handler = logging.FileHandler(_run_log_file, encoding="utf-8")
 _file_handler.setLevel(logging.DEBUG)
-_file_handler.setFormatter(logging.Formatter("%(asctime)s | %(name)s | %(levelname)s | %(message)s"))
+_file_handler.setFormatter(logging.Formatter(_LOG_FMT))
 
 
 # ── Logger factory ────────────────────────────────────────────────────────────
-def get_logger(name: str) -> logging.Logger:
+def get_logger(
+    name: str,
+    log_file: Optional[Union[str, Path]] = None,
+    console_output: bool = False,
+) -> logging.Logger:
+    """Create or retrieve a named logger.
+
+    Args:
+        name:            Logger name (e.g. "ranker", "agent").
+        log_file:        Optional path to a dedicated log file for this logger.
+                         Parent directories are created automatically.
+        console_output:  If False, suppresses Rich console output.
+                         Useful for noisy tools where you only want file logs.
+
+    Every logger always writes to the shared run log file regardless of options.
+    """
     logger = logging.getLogger(name)
     if not logger.handlers:
-        handler = RichHandler(
-            console=console,
-            show_time=True,
-            show_path=False,
-            markup=True,
-            rich_tracebacks=True,
-        )
-        logger.addHandler(handler)
-        logger.addHandler(_file_handler)  # write every log record to the run log file
+        # ── Rich console handler (optional) ───────────────────────────────
+        if console_output:
+            handler = RichHandler(
+                console=console,
+                show_time=True,
+                show_path=False,
+                markup=True,
+                rich_tracebacks=True,
+            )
+            logger.addHandler(handler)
+
+        # ── Shared run log (always attached) ──────────────────────────────
+        logger.addHandler(_file_handler)
+
+        # ── Dedicated log file (optional) ─────────────────────────────────
+        if log_file:
+            log_path = Path(log_file)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            dedicated_fh = logging.FileHandler(log_path, encoding="utf-8")
+            dedicated_fh.setLevel(logging.DEBUG)
+            dedicated_fh.setFormatter(logging.Formatter(_LOG_FMT))
+            logger.addHandler(dedicated_fh)
+
         logger.setLevel(logging.DEBUG)
         logger.propagate = False
     return logger
