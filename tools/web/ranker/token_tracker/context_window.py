@@ -26,17 +26,21 @@ def extract_context_usage(model: str, usage: Any) -> Dict:
         }
 
     # ── Core tokens ─────────────────────────────
-    input_tokens = getattr(usage, "prompt_token_count", 0)
-    output_tokens = getattr(usage, "candidates_token_count", 0)
-    thought_tokens = getattr(usage, "thoughts_token_count", 0)
+    def _safe_int(value):
+        return int(value) if isinstance(value, (int, float)) else 0
+
+    input_tokens = _safe_int(getattr(usage, "prompt_token_count", 0))
+    output_tokens = _safe_int(getattr(usage, "candidates_token_count", 0))
+    thought_tokens = _safe_int(getattr(usage, "thoughts_token_count", 0))
 
     # Some SDK versions already include everything in total
     api_total = getattr(usage, "total_token_count", None)
+    api_total = _safe_int(api_total)
 
     # Recompute safe total (more accurate for debugging)
     computed_total = input_tokens + output_tokens + thought_tokens
 
-    total_tokens = api_total if api_total is not None else computed_total
+    total_tokens = api_total if api_total > 0 else computed_total
 
     # ── Context limit ───────────────────────────
     limit = MODEL_CONTEXT_LIMITS.get(model, 1_000_000)

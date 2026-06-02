@@ -3,9 +3,9 @@
 import time
 from dataclasses import dataclass, field
 from typing import List, Dict
-import logging
+from core.logger import get_logger
 
-logger = logging.getLogger("ranker")
+logger = get_logger("ranker", log_file="logs/ranker/ranker.log")
 
 
 @dataclass
