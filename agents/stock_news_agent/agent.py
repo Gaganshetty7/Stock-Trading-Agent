@@ -19,7 +19,7 @@ class StockNewsAgent(BaseAgent):
         # Seamlessly extensible: add new tools to this list when needed 
         # (e.g., "write_json", "search_web", "analyze_sentiment")
         # Include `rank_news_payload` but enforce file-based handoff in the skill prompt
-        return ["fetch_broad_market_rss", "rank_news_payload"]
+        return ["fetch_broad_market_rss", "rank_news_payload", "select_top_stocks"]
 
     def parse_output(self, final_output: dict[str, Any]) -> Any:
         # Since fetch_broad_market_rss already writes the JSON to disk,
