@@ -61,15 +61,17 @@ class BaseAgent(ABC):
         )
         return self._system_prompt
 
-    async def run(self, task: dict[str, Any]) -> dict[str, Any]:
+    async def run(self, task: dict[str, Any] | None = None) -> dict[str, Any]:
         run_id = str(uuid.uuid4())[:8]
         log_info(self.name, f"Starting run [{run_id}]")
 
         structured_llm = self.llm.with_structured_output(ReActStep)
 
+        kickoff = json.dumps(task) if task else "Begin."
+
         messages = [
             SystemMessage(content=self._build_system_prompt()),
-            HumanMessage(content=json.dumps(task)),
+            HumanMessage(content=kickoff),
         ]
 
         for iteration in range(MAX_REACT_ITERATIONS):
