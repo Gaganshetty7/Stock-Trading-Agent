@@ -3,10 +3,8 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional
 
-from core.logger import get_logger
+from tools.web.ranker.utils.logger import logger
 
-# Initialize logger once with shared core logger configuration.
-logger = get_logger("ranker", log_file="logs/ranker/ranker.log")
 
 class QuotaError(Exception):
     """Custom error for 429 rejections."""
