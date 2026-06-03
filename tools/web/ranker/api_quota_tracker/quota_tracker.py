@@ -61,7 +61,10 @@ def log_api_usage(key: str, model: str, status: str = "SUCCESS"):
 
 def log_quota_attempt(model: str, status: str = "SKIPPED"):
     """Logs an attempt to use the quota, even if skipped/mocked."""
+    QUOTA_COUNT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    
     now = datetime.now()
+
     date_str = now.strftime("%Y-%m-%d")
     time_str = now.strftime("%I:%M:%S %p")
     
