@@ -17,7 +17,8 @@ from ..config.settings import (
     RANKING_TIMEOUT,
 )
 from ..token_tracker import extract_context_usage, log_token_usage
-from ..utils.json_utils import parse_json_from_text
+from ..utils.json_parser import parse_json_from_text
+
 from ..utils.logger import logger
 from .prompts import RANK_PROMPT
 
