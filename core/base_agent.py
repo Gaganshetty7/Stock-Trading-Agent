@@ -1,7 +1,7 @@
 import json
 import uuid
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from pydantic import BaseModel, Field
@@ -13,13 +13,14 @@ from config.settings import MAX_REACT_ITERATIONS
 
 MAX_OBSERVATION_LENGTH = 8000
 
+T = TypeVar("T")
 
 # ── ReAct step schema ─────────────────────────────────────────────────────────
-class ReActStep(BaseModel):
+class ReActStep(BaseModel, Generic[T]):
     thought: str
     action: str
     action_input: dict[str, Any] | None = Field(None, description="Input for the tool action.")
-    final_output: dict[str, Any] | None = Field(None, description="The final result to return when action is 'FINISH'. For NewsAgent, this must include the 'signals' list.")
+    final_output: T | None = Field(None, description="The final result to return when action is 'FINISH'.")
 
 
 class BaseAgent(ABC):
@@ -41,6 +42,11 @@ class BaseAgent(ABC):
     @abstractmethod
     def tool_names(self) -> list[str]: ...
 
+    @property
+    def output_schema(self) -> type[BaseModel] | None:
+        """Override this to strictly enforce a final output schema."""
+        return None
+
     @abstractmethod
     def parse_output(self, final_output: dict[str, Any]) -> Any: ...
 
@@ -59,13 +65,19 @@ class BaseAgent(ABC):
             f"To finish:      {{\"thought\": \"...\", \"action\": \"FINISH\", \"final_output\": {{...}}}}\n\n"
             f"IMPORTANT: Always include all results in 'final_output' when calling 'FINISH'."
         )
+        if self.output_schema:
+            schema_json = json.dumps(self.output_schema.model_json_schema(), indent=2)
+            self._system_prompt += f"\n\n## Final Output Schema\nWhen action is 'FINISH', the 'final_output' must strictly match this schema:\n```json\n{schema_json}\n```"
+
         return self._system_prompt
 
-    async def run(self, task: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def run(self, task: Any) -> dict[str, Any]:
         run_id = str(uuid.uuid4())[:8]
         log_info(self.name, f"Starting run [{run_id}]")
 
-        structured_llm = self.llm.with_structured_output(ReActStep)
+        # Standardized generic enforcement
+        OutputSchema = self.output_schema or dict[str, Any]
+        structured_llm = self.llm.with_structured_output(ReActStep[OutputSchema])
 
         kickoff = json.dumps(task) if task else "Begin."
 
@@ -88,6 +100,8 @@ class BaseAgent(ABC):
 
             if step.action == "FINISH":
                 final_output = step.final_output or step.action_input or {}
+                if isinstance(final_output, BaseModel):
+                    final_output = final_output.model_dump()
                 output = self.parse_output(final_output)
                 log_info(self.name, f"Run [{run_id}] completed.")
                 return {"status": "completed", "output": output}
