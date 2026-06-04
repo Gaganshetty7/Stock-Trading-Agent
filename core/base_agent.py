@@ -71,7 +71,7 @@ class BaseAgent(ABC):
 
         return self._system_prompt
 
-    async def run(self, task: Any) -> dict[str, Any]:
+    async def run(self, task: Any = None) -> dict[str, Any]:
         run_id = str(uuid.uuid4())[:8]
         log_info(self.name, f"Starting run [{run_id}]")
 
