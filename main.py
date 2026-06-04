@@ -10,12 +10,8 @@ async def main():
     
     print("Starting broad market news sweep using StockNewsAgent...")
     
-    # We just run the agent with a generic task since its system prompt 
-    # tells it exactly what to do using its available tools.
-    task = {"task": "Fetch the latest broad market news and report statistics."}
-    
     try:
-        result = await agent.run(task)
+        result = await agent.run()
         
         if result["status"] == "completed":
             print("\n✓ Run completed successfully.")

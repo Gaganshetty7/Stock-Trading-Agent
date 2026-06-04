@@ -79,9 +79,11 @@ class BaseAgent(ABC):
         OutputSchema = self.output_schema or dict[str, Any]
         structured_llm = self.llm.with_structured_output(ReActStep[OutputSchema])
 
+        kickoff = json.dumps(task) if task else "Begin."
+
         messages = [
             SystemMessage(content=self._build_system_prompt()),
-            HumanMessage(content=json.dumps(task)),
+            HumanMessage(content=kickoff),
         ]
 
         for iteration in range(MAX_REACT_ITERATIONS):
