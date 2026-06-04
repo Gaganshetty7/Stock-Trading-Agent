@@ -1,17 +1,22 @@
 import asyncio
 from core.tool import init_tools
-from agents.stock_news_agent import StockNewsAgent
+from agents.technical_analyst_agent import TechnicalAnalystAgent
 
 async def main():
     # Initialise tool registry
     init_tools()
 
-    agent = StockNewsAgent()
+    agent = TechnicalAnalystAgent()
     
-    print("Starting broad market news sweep using StockNewsAgent...")
+    print("Starting technical analysis sweep using TechnicalAnalystAgent...")
+    
+    # We run the agent with a list of tickers that it should process.
+    task = {
+        "tickers": ["RELIANCE", "TCS", "INFY"]
+    }
     
     try:
-        result = await agent.run()
+        result = await agent.run(task)
         
         if result["status"] == "completed":
             print("\n✓ Run completed successfully.")

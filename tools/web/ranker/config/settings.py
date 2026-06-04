@@ -23,6 +23,7 @@ RANKING_TIMEOUT = 25
 MAX_TITLE_LEN = 160            # Truncate long titles before sending to LLM
 TOP_N_ARTICLES = 2             # Max articles to keep per company
 MIN_CONFIDENCE = 0.75          # Minimum confidence (0.0-1.0) to keep an article
+MIN_IMPACT = 0.55            # Minimum impact score (0.0-1.0) to keep an article
 
 # -- Intraday Weighting Multipliers --
 MARKET_CLOSED_MULTIPLIER = 0.85  # Penalty if outside IST trading hours
@@ -34,5 +35,4 @@ STALE_THRESHOLD_MINS = 180       # 3 hours
 GEMINI_RANKER_API_KEY = os.getenv("GEMINI_RANKER_API_KEY", "")
 if not GEMINI_RANKER_API_KEY:
     raise ValueError("GEMINI_RANKER_API_KEY not found in .env — add it there, never hardcode it")
-
 
