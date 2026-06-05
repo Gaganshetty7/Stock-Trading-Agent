@@ -200,4 +200,7 @@ async def fetch_broad_market_rss(max_age_hours) -> dict:
         
     logger.info(f"Saved mapped news → {output_file}")
     logger.info("=" * 60)
-    return payload
+    return {
+        "metadata": payload["metadata"],
+        "output_file": str(output_file),
+    }
