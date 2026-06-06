@@ -8,7 +8,7 @@ from ..config.settings import (
     MIN_CONFIDENCE,
     MIN_IMPACT,
     RANKING_BATCH_SIZE,
-    RANKING_MODEL,
+    NEWS_RANKER_MODEL,
     STALE_DECAY_MULTIPLIER,
     STALE_THRESHOLD_MINS,
     TOP_N_ARTICLES,
@@ -52,7 +52,7 @@ async def execute_ranker_pipeline(
     final_results = []
 
     for i, batch_tickers in enumerate(batches):
-        log_quota_attempt(RANKING_MODEL, "START")
+        log_quota_attempt(NEWS_RANKER_MODEL, "START")
         validated, status = await run_batch(
             batch_tickers=batch_tickers,
             batch_index=i,

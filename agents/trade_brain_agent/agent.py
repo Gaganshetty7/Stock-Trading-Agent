@@ -24,20 +24,13 @@ class TradeBrainAgent(BaseAgent):
 
     @property
     def tool_names(self) -> list[str]:
-        return []
+        return ["trade_strategy"]
 
     @property
     def output_schema(self) -> Any:
-        return TradePlan
+        return None
 
     def parse_output(self, final_output: dict[str, Any]) -> Any:
-        """
-        Validate the LLM's final output against the TradePlan schema.
-        Raises an error if validation fails to prevent silent failures.
-        """
-        try:
-            return TradePlan(**final_output).model_dump()
-        except Exception as e:
-            self.logger.error(f"Failed to validate TradePlan schema. Error: {e}")
-            self.logger.error(f"Raw output was: {final_output}")
-            raise ValueError(f"LLM output did not match TradePlan schema: {e}")
+        # The schema is validated inside the generate_trade_plans tool.
+        # We just return the final agent message here.
+        return final_output

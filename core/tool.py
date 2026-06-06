@@ -35,8 +35,7 @@ from tools.web.broad_market_feeds.broad_rss_fetcher import fetch_broad_market_rs
 from tools.market.technical_analysis_tool.tool import fetch_and_save_technicals
 from tools.web.ranker.tool import rank_news_payload
 from tools.web.selector.tool import select_top_stocks
-
-
+from tools.trade_brain.trade_strategy.tool import trade_strategy
 
 def init_tools() -> None:
     """Call this ONCE at application startup."""
@@ -74,4 +73,11 @@ def init_tools() -> None:
         "filter, and selects the top-N unique tickers by combined score. "
         "Saves candidate_pool and top_tickers files to disk. "
         "Input: signals_file (str, optional). Returns a summary with selected_tickers and file paths."
+    )
+    register_tool(
+        "trade_strategy",
+        trade_strategy,
+        "Locates the technical analysis batch file, processes each ticker using an institutional "
+        "trade reasoning engine, and saves the generated trade plans to disk. "
+        "Input: file_path (str, optional). Returns the saved file path containing the strategies."
     )

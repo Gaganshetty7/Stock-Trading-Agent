@@ -5,7 +5,7 @@ load_dotenv()
 
 # ── Ranking LLM Config ────────────────────────────────────────────────────────
 # Specific model identifier for the ranking/filtering stage
-RANKING_MODEL = os.getenv("RANKING_MODEL")
+NEWS_RANKER_MODEL = os.getenv("NEWS_RANKER_MODEL")
 
 # -- Orchestration Parameters --
 RANKING_BATCH_SIZE = 10
@@ -32,7 +32,7 @@ STALE_THRESHOLD_MINS = 180       # 3 hours
 
 # ── API Key Management ────────────────────────────────────────────────────────
 # Single key for ranking - friend's key, must be protected
-GEMINI_RANKER_API_KEY = os.getenv("GEMINI_RANKER_API_KEY", "")
-if not GEMINI_RANKER_API_KEY:
-    raise ValueError("GEMINI_RANKER_API_KEY not found in .env — add it there, never hardcode it")
+NEWS_RANKER_API_KEY = os.getenv("NEWS_RANKER_API_KEY", "")
+if not NEWS_RANKER_API_KEY:
+    raise ValueError("NEWS_RANKER_API_KEY not found in .env — add it there, never hardcode it")
 

@@ -10,10 +10,10 @@ from google.genai import types
 
 from ..api_quota_tracker.quota_tracker import log_api_usage
 from ..config.settings import (
-    GEMINI_RANKER_API_KEY,
+    NEWS_RANKER_API_KEY,
     RANKING_BACKOFF_BASE,
     RANKING_MAX_RETRIES,
-    RANKING_MODEL,
+    NEWS_RANKER_MODEL,
     RANKING_TIMEOUT,
 )
 from ..token_tracker import extract_context_usage, log_token_usage
@@ -24,7 +24,7 @@ from .prompts import RANK_PROMPT
 
 load_dotenv()
 
-CLIENT = genai.Client(api_key=GEMINI_RANKER_API_KEY)
+CLIENT = genai.Client(api_key=NEWS_RANKER_API_KEY)
 
 # Rolling rate limiter for outbound LLM requests to avoid burst throttling.
 # Keeps timestamps of recent requests and only sleeps when the recent
@@ -61,7 +61,7 @@ async def call_llm(
             start = time.time()
             response = await asyncio.wait_for(
                 CLIENT.aio.models.generate_content(
-                    model=RANKING_MODEL,
+                    model=NEWS_RANKER_MODEL,
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
@@ -72,9 +72,9 @@ async def call_llm(
 
             usage = getattr(response, "usage_metadata", None)
             if usage:
-                stats = extract_context_usage(RANKING_MODEL, usage)
+                stats = extract_context_usage(NEWS_RANKER_MODEL, usage)
                 log_token_usage(
-                    model=RANKING_MODEL,
+                    model=NEWS_RANKER_MODEL,
                     prompt_tokens=stats["input_tokens"],
                     completion_tokens=stats["output_tokens"],
                     thought_tokens=stats.get("thought_tokens", 0),
@@ -90,7 +90,7 @@ async def call_llm(
             metrics.latencies.append(latency)
             metrics.request_timestamps.append(time.time())
 
-            log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "SUCCESS")
+            log_api_usage(NEWS_RANKER_API_KEY, NEWS_RANKER_MODEL, "SUCCESS")
             metrics.api_calls_made += 1
             return response.text
 
@@ -99,7 +99,7 @@ async def call_llm(
             err_str = str(e)
 
             if any(x in err_str for x in ["429", "RESOURCE_EXHAUSTED", "503", "UNAVAILABLE"]):
-                log_api_usage(GEMINI_RANKER_API_KEY, RANKING_MODEL, "REJECTED_429_OR_503")
+                log_api_usage(NEWS_RANKER_API_KEY, NEWS_RANKER_MODEL, "REJECTED_429_OR_503")
 
                 if attempt < RANKING_MAX_RETRIES:
                     attempt += 1

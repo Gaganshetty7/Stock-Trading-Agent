@@ -187,8 +187,5 @@ async def select_top_stocks(signals_file: Optional[str] = None) -> Dict:
 
     return {
         "status": "success",
-        "selected_tickers": selected_tickers,
-        "total_candidates": total_candidates,
-        "candidate_pool_file": pool_file,
-        "top_tickers_file": tickers_file,
+        "selected_tickers": selected_tickers
     }

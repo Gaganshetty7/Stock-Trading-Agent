@@ -4,8 +4,8 @@
 
 TOP_N = 10
 
-# 👉 YOU DECIDE THIS
-ALLOWED_TRENDS = ["bullish", "bearish"]  
+# YOU DECIDE THIS bullish/bearish/sideways
+ALLOWED_TRENDS = ["bullish"]  
 
 # PROGRESSIVE THRESHOLD CONFIG
 # The system will start at (1.0, 1.0) and decrease by STEP 
