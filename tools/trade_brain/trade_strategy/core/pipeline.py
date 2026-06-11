@@ -12,6 +12,9 @@ from config.settings import (
 from agents.trade_brain_agent.schema import TradePlan
 from tools.storage.file_writer import write_json
 from ..llm.prompts import TRADE_BRAIN_SYSTEM_PROMPT
+from core.logger import get_logger
+
+logger = get_logger("TradeStrategy")
 
 async def execute_trade_brain_pipeline(technical_data: Dict) -> str:
     """
@@ -31,6 +34,7 @@ async def execute_trade_brain_pipeline(technical_data: Dict) -> str:
     # Process each ticker
     for ticker, data in technical_data.items():
         try:
+            logger.info(f"Processing ticker: {ticker}")
             # Prepare messages
             messages = [
                 SystemMessage(content=TRADE_BRAIN_SYSTEM_PROMPT),
@@ -41,8 +45,10 @@ async def execute_trade_brain_pipeline(technical_data: Dict) -> str:
             plan: TradePlan = await structured_llm.ainvoke(messages)
             
             final_results[ticker] = plan.model_dump()
+            logger.info(f"Successfully generated plan for {ticker}")
             
         except Exception as e:
+            logger.error(f"Failed to generate plan for {ticker}: {str(e)}")
             final_results[ticker] = {"error": f"Failed to generate plan: {str(e)}"}
             
     # Save the aggregated results

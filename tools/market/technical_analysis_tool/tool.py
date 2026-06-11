@@ -25,6 +25,9 @@ import yfinance as yf
 
 from tools.market.technical_analysis_tool.helpers.indicators import process_stock
 from tools.storage.file_writer import write_json
+from core.logger import get_logger
+
+logger = get_logger("TechAnalysis")
 
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 warnings.filterwarnings("ignore")
@@ -113,8 +116,10 @@ async def fetch_and_save_technicals(tickers: list[str]) -> dict:
     Returns:
         dict — Contains status, file_path, and list of tickers_processed.
     """
+    logger.info(f"Fetching on-demand technicals for {len(tickers)} tickers...")
     data = await run_technical_analysis(tickers)
     filepath = await write_json(filename_prefix="technicals/analysis_batch", data=data)
+    logger.info(f"Technicals batch saved to: {filepath}")
 
     return {
         "status": "success",

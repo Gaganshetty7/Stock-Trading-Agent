@@ -2,6 +2,9 @@ from typing import Optional, Dict
 
 from .core.payload import load_technicals_payload
 from .core.pipeline import execute_trade_brain_pipeline
+from core.logger import get_logger
+
+logger = get_logger("TradeStrategy")
 
 async def trade_strategy(file_path: Optional[str] = None) -> Dict:
     """
@@ -16,15 +19,21 @@ async def trade_strategy(file_path: Optional[str] = None) -> Dict:
     Returns:
         Dict: An observation summarizing the execution and the saved file path.
     """
+    logger.info("Starting trade strategy execution...")
+    
     # 1. Load the payload
     try:
         technical_data, source_file = load_technicals_payload(file_path)
+        logger.info(f"Loaded payload from: {source_file}")
     except Exception as e:
+        logger.error(f"Failed to load payload: {str(e)}")
         return {"status": "error", "message": f"Failed to load payload: {str(e)}"}
         
     # 2. Execute pipeline
     try:
+        logger.info(f"Executing pipeline for {len(technical_data)} tickers...")
         output_file = await execute_trade_brain_pipeline(technical_data)
+        logger.info(f"Pipeline execution complete. Results saved to: {output_file}")
         
         return {
             "status": "success",
@@ -33,4 +42,5 @@ async def trade_strategy(file_path: Optional[str] = None) -> Dict:
             "generated_plan_file": output_file
         }
     except Exception as e:
+        logger.error(f"Pipeline execution failed: {str(e)}")
         return {"status": "error", "message": f"Pipeline execution failed: {str(e)}"}
