@@ -15,6 +15,9 @@ from agents.trade_brain_agent.schema import TradePlan
 from tools.storage.file_writer import write_json
 import os
 
+# Uncomment the import statement below to use prompts file and comment skill path block below
+# from ..llm.prompts import TRADE_BRAIN_SYSTEM_PROMPT
+
 skill_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "llm", "SKILL.MD")
 with open(skill_path, "r", encoding="utf-8") as f:
     TRADE_BRAIN_SYSTEM_PROMPT = f.read()
