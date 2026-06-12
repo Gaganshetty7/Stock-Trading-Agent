@@ -19,24 +19,23 @@ def get_llm(
         _api_key = api_key if api_key is not None else GEMINI_API_KEY
         kwargs = {"model": _model, "temperature": _temp, "google_api_key": _api_key}
         base_llm = ChatGoogleGenerativeAI(**kwargs)
-        wrapped = AutoTrackingLLMWrapper(base_llm)
-        return wrapped
 
-    # elif LLM_PROVIDER == "anthropic":
+    # elif _provider == "anthropic":
     #     from langchain_anthropic import ChatAnthropic
     #     from config.settings import ANTHROPIC_API_KEY
-    #     return ChatAnthropic(
-    #         model=LLM_MODEL,
-    #         temperature=LLM_TEMPERATURE,
-    #         anthropic_api_key=ANTHROPIC_API_KEY,
-    #     )
+    #     _api_key = api_key if api_key is not None else ANTHROPIC_API_KEY
+    #     kwargs = {"model": _model, "temperature": _temp, "api_key": _api_key}
+    #     base_llm = ChatAnthropic(**kwargs)
 
     elif _provider == "openai":
         from langchain_openai import ChatOpenAI
         from config.settings import OPENAI_API_KEY
         _api_key = api_key if api_key is not None else OPENAI_API_KEY
         kwargs = {"model": _model, "temperature": _temp, "openai_api_key": _api_key}
-        return ChatOpenAI(**kwargs)
+        base_llm = ChatOpenAI(**kwargs)
 
     else:
         raise ValueError(f"Unsupported LLM provider: {_provider}")
+
+    # Centralized usage tracking wrapper
+    return AutoTrackingLLMWrapper(base_llm)
