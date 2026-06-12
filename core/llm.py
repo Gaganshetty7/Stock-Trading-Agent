@@ -1,6 +1,6 @@
 from langchain_core.language_models import BaseChatModel
 from config.settings import LLM_PROVIDER, LLM_MODEL, LLM_TEMPERATURE
-
+from usage_tracker import AutoTrackingLLMWrapper
 
 def get_llm(
     provider: str | None = None,
@@ -17,11 +17,15 @@ def get_llm(
         from langchain_google_genai import ChatGoogleGenerativeAI
         from config.settings import GEMINI_API_KEY
         _api_key = api_key if api_key is not None else GEMINI_API_KEY
-        return ChatGoogleGenerativeAI(
+        base_llm=ChatGoogleGenerativeAI(
             model=_model,
             temperature=_temp,
             google_api_key=_api_key,
         )
+       
+
+        wrapped = AutoTrackingLLMWrapper(base_llm)
+        return wrapped
 
     # elif LLM_PROVIDER == "anthropic":
     #     from langchain_anthropic import ChatAnthropic
@@ -43,4 +47,3 @@ def get_llm(
 
     # else:
     #     raise ValueError(f"Unsupported LLM provider: {LLM_PROVIDER}")
-
