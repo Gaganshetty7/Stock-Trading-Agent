@@ -13,7 +13,10 @@ from config.settings import (
 )
 from agents.trade_brain_agent.schema import TradePlan
 from tools.storage.file_writer import write_json
+from core.logger import get_logger
 import os
+
+logger = get_logger("TradeStrategy")
 
 # Uncomment the import statement below to use prompts file and comment skill path block below
 # from ..llm.prompts import TRADE_BRAIN_SYSTEM_PROMPT
@@ -40,6 +43,7 @@ async def execute_trade_brain_pipeline(technical_data: Dict) -> str:
     max_retries = TRADE_STRATEGY_MAX_RETRIES
 
     for ticker, data in technical_data.items():
+        logger.info(f"Processing ticker: {ticker}")
         messages = [
             SystemMessage(content=TRADE_BRAIN_SYSTEM_PROMPT),
             HumanMessage(content=f"Technical data for {ticker}:\n{json.dumps(data, indent=2)}")
@@ -50,16 +54,18 @@ async def execute_trade_brain_pipeline(technical_data: Dict) -> str:
             try:
                 plan: TradePlan = await structured_llm.ainvoke(messages)
                 plan_dict = plan.model_dump()
+                logger.info(f"Successfully generated plan for {ticker}")
                 break
             except Exception as e:
                 if attempt < max_retries:
                     backoff = 5.0 * (2 ** attempt)
+                    logger.debug(f"Retrying {ticker} (attempt {attempt + 1}) after error: {str(e)}")
                     await asyncio.sleep(backoff)
                 else:
+                    logger.error(f"Failed to generate plan for {ticker} after {max_retries} retries: {str(e)}")
                     plan_dict = {"error": f"Failed to generate plan after {max_retries} retries: {str(e)}"}
 
         final_results[ticker] = plan_dict
-
     output_filepath = await write_json(
         filename_prefix="trade_strategy/plan",
         data=final_results,
