@@ -8,6 +8,9 @@ from typing import Optional, Dict, List
 from config.settings import OUTPUTS_DIR
 from tools.storage.file_writer import write_json
 from tools.web.selector.settings import TOP_N, ALLOWED_TRENDS, MIN_CONFIDENCE, MIN_IMPACT, STEP, COMBINED_SCORE_WEIGHTS
+from core.logger import get_logger
+
+logger = get_logger("Selector")
 
 
 # ─────────────── LOCAL HELPERS ───────────────
@@ -40,6 +43,7 @@ def _load_signals(signals_file: Optional[str] = None) -> Dict:
         files = glob.glob("outputs/ranker/intraday_signals_*.json")
         if files:
             signals_file = max(files, key=os.path.getctime)
+            logger.info(f"Auto-discovered latest signals file: {signals_file}")
         else:
             raise ValueError(
                 "No signals_file provided and no intraday_signals_*.json found in outputs/ranker/"
@@ -47,6 +51,7 @@ def _load_signals(signals_file: Optional[str] = None) -> Dict:
 
     with open(signals_file, "r", encoding="utf-8") as f:
         payload = json.load(f)
+        logger.info(f"Loaded {len(payload.get('signals', {}))} raw ticker signals from {signals_file}")
 
     # Unwrap the ranker schema:
     # payload["signals"] = { ticker: { "ticker": ..., "company_insights": [...] } }
@@ -185,6 +190,7 @@ async def select_top_stocks(signals_file: Optional[str] = None) -> Dict:
     tickers_str = ", ".join(selected_tickers)
     tickers_file = await _write_text("top_tickers/top_tickers", tickers_str)
 
+    logger.info(f"Selection complete: {len(selected_tickers)} tickers selected ({', '.join(selected_tickers[:3])}{'...' if len(selected_tickers) > 3 else ''})")
     return {
         "status": "success",
         "selected_tickers": selected_tickers
