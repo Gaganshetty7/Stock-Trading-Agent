@@ -12,7 +12,7 @@ async def main():
     
     # We run the agent with a list of tickers that it should process.
     task = {
-        "tickers": ["RELIANCE", "TCS", "INFY"]
+        "tickers": ["RELIANCE", "TCS", "INFY","SBIN" ]
     }
     
     try:
