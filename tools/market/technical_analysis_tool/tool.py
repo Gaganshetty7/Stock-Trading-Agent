@@ -14,13 +14,14 @@ Agent usage (via core registry):
 
 Direct usage (for testing/pipelines):
     from tools.market.technical_analysis_tool import run_technical_analysis
-    result = await run_technical_analysis(["RELIANCE", "TCS.NS"])
+    result = await run_technical_analysis(["RELIANCE", "TCS"])
 """
 
 import logging
 from datetime import datetime
+import asyncio
 
-from tools.market.technical_analysis_tool.upstox_client import UpstoxClient, fetch_upstox_batch
+from tools.market.technical_analysis_tool.upstox_client import UpstoxClient, fetch_upstox_batch, fetch_ltp_batch
 from tools.market.technical_analysis_tool.helpers.symbol_resolver import resolve_symbols_batch
 from tools.market.technical_analysis_tool.helpers.indicators import process_stock
 from tools.storage.file_writer import write_json
@@ -36,7 +37,7 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
     """
     Fetch and analyze a list of NSE stock tickers on demand in a single batch.
 
-    Automatically appends '.NS' suffix to any ticker that is missing it (for output format).
+    Normalizes tickers to uppercase.
     Fetches 1-minute, 5-minute, and 15-minute OHLCV data from Upstox Analytics API,
     then computes and returns for each ticker:
       - market_data         : current price, open, high, low, previous close
@@ -46,10 +47,9 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
 
     Args:
         tickers: List of NSE stock symbols, e.g. ['RELIANCE', 'TCS', 'HDFCBANK']
-                 Missing '.NS' suffixes are added automatically for output.
 
     Returns:
-        dict — Maps each ticker (with .NS suffix) to its full analysis or an error dict.
+        dict — Maps each ticker to its full analysis or an error dict.
     """
     # Normalize tickers to uppercase
     clean_tickers = []
@@ -68,17 +68,19 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
     resolvable_tickers = [t for t in clean_tickers if symbol_mapping.get(t)]
     if not resolvable_tickers:
         logger.error(f"Could not resolve any symbols from {clean_tickers}")
-        return {f"{t}.NS": {"stock": f"{t}.NS", "status": "error", "message": "Symbol not found"} 
+        return {t: {"stock": t, "status": "error", "message": "Symbol not found"} 
                 for t in clean_tickers}
 
-    # Fetch candles from Upstox (1m, 5m, 15m)
+    # Fetch candles and LTP from Upstox (1m, 5m, 15m)
     instrument_keys = [symbol_mapping[t] for t in resolvable_tickers]
-    upstox_data = await fetch_upstox_batch(instrument_keys, intervals=["1", "5", "15"])
+    upstox_data_task = asyncio.create_task(fetch_upstox_batch(instrument_keys, intervals=["1", "5", "15"]))
+    ltp_data_task = asyncio.create_task(fetch_ltp_batch(instrument_keys))
+    upstox_data, ltp_data = await asyncio.gather(upstox_data_task, ltp_data_task)
 
     # Process each ticker
     results = {}
     for ticker in clean_tickers:
-        output_ticker = f"{ticker}.NS"  # Add .NS suffix for output
+        output_ticker = ticker
         
         try:
             instrument_key = symbol_mapping.get(ticker)
@@ -107,8 +109,9 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
                 }
                 continue
 
-            # Pass to indicator processor (unchanged)
-            results[output_ticker] = process_stock(output_ticker, data_1m, data_5m, data_15m)
+            # Pass to indicator processor
+            ltp = ltp_data.get(instrument_key)
+            results[output_ticker] = process_stock(output_ticker, data_1m, data_5m, data_15m, ltp=ltp)
 
         except Exception as e:
             results[output_ticker] = {
@@ -131,8 +134,7 @@ async def fetch_and_save_technicals(tickers: list[str]) -> dict:
     (which causes truncation and data loss in the ReAct loop).
 
     Args:
-        tickers: List of NSE stock symbols, e.g. ['RELIANCE', 'TCS.NS', 'HDFCBANK']
-                 Missing '.NS' suffixes are added automatically.
+        tickers: List of NSE stock symbols, e.g. ['RELIANCE', 'TCS', 'HDFCBANK']
 
     Returns:
         dict — Contains status, file_path, and list of tickers_processed.

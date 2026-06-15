@@ -27,7 +27,7 @@ logger = get_logger("symbol_resolver")
 IST = timezone(timedelta(hours=5, minutes=30))
 
 # Cache file path
-CACHE_DIR = Path(__file__).resolve().parent.parent.parent.parent / "resources"
+CACHE_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "resources"
 CACHE_FILE = CACHE_DIR / "upstox_instruments_master.json"
 CACHE_TTL_HOURS = 24
 

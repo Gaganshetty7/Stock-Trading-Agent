@@ -112,6 +112,33 @@ class UpstoxClient:
             logger.error(f"Unexpected error fetching {instrument_key}: {e}")
             return None
 
+    async def fetch_ltp(self, instrument_key: str) -> Optional[float]:
+        """Fetch the latest LTP for a single instrument key."""
+        try:
+            # Upstox V3 endpoint for LTP takes comma-separated instrument_keys but we fetch one at a time for simplicity and consistency
+            url = f"{self.base_url}/market-quote/ltp?instrument_key={instrument_key}"
+            
+            await self._rate_limit()
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(url, headers=self.headers)
+                response.raise_for_status()
+                
+            data = response.json()
+            if data.get("status") != "success":
+                logger.warning(f"Upstox LTP error for {instrument_key}: {data.get('errors', 'Unknown error')}")
+                return None
+                
+            quotes = data.get("data", {})
+            if quotes:
+                instrument_data = list(quotes.values())[0]
+                return float(instrument_data.get("last_price", 0.0))
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error fetching LTP for {instrument_key}: {e}")
+            return None
+
     def _transform_to_dataframe(self, candles: list) -> pd.DataFrame:
         """
         Transform Upstox candle array format to pandas DataFrame.
@@ -136,6 +163,7 @@ class UpstoxClient:
             return df
 
         df.set_index("Datetime", inplace=True)
+        df.sort_index(ascending=True, inplace=True)
         return df
 
     async def _rate_limit(self, requests_per_second: float = 50.0):
@@ -199,4 +227,29 @@ async def fetch_upstox_batch(
                 results[instrument_key] = {}
             results[instrument_key][interval] = None
 
+    return results
+
+async def fetch_ltp_batch(instrument_keys: list[str]) -> dict:
+    """
+    Fetch LTP for multiple instruments in parallel.
+    Args:
+        instrument_keys: List of Upstox instrument keys.
+    Returns:
+        dict: {"instrument_key": float(ltp), ...}
+    """
+    client = UpstoxClient(UPSTOX_TOKEN, UPSTOX_API_BASE_URL)
+    results = {}
+    
+    tasks = []
+    for instrument_key in instrument_keys:
+        tasks.append((instrument_key, client.fetch_ltp(instrument_key)))
+        
+    for instrument_key, task in tasks:
+        try:
+            ltp = await task
+            results[instrument_key] = ltp
+        except Exception as e:
+            logger.error(f"Error fetching LTP for {instrument_key}: {e}")
+            results[instrument_key] = None
+            
     return results
