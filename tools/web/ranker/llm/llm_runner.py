@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timezone
 
 from core.llm import get_llm
+from usage_tracker.wrapper import AutoTrackingLLMWrapper
 from ..config.settings import (
     NEWS_RANKER_API_KEY,
     NEWS_RANKER_MODEL,
@@ -21,12 +22,13 @@ from .prompts import RANK_PROMPT
 # -----------------------------
 # LLM INIT
 # -----------------------------
-LLM = get_llm(
+_raw_llm = get_llm(
     provider="gemini",
     model=NEWS_RANKER_MODEL,
     temperature=0,
     api_key=NEWS_RANKER_API_KEY,
 )
+LLM = AutoTrackingLLMWrapper(_raw_llm)
 
 
 # -----------------------------

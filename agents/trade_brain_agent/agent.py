@@ -16,7 +16,7 @@ class TradeBrainAgent(BaseAgent):
 
     @property
     def name(self) -> str:
-        return "trade_brain_agent"
+        return "TradeBrainAgent"
 
     @property
     def skill_path(self) -> str:

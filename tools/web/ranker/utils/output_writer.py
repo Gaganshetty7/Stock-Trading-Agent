@@ -1,7 +1,9 @@
 from typing import Dict, Optional
+from pathlib import Path
 from tools.storage.file_writer import write_json
+import json
 from .logger import logger
-
+from datetime import datetime, timezone, timedelta
 
 async def save_ranker_output(
     output_data: Dict,
@@ -31,7 +33,14 @@ async def save_ranker_output(
                 if k not in metadata_payload:
                     metadata_payload[k] = v
         
-        await write_json("metadata/pipeline_metadata", metadata_payload)
+        metadata_save_dir = Path("logs/ranker/batch_logs")
+        metadata_save_dir.mkdir(parents=True, exist_ok=True)
+        IST = timezone(timedelta(hours=5, minutes=30))
+        ts = datetime.now(IST).strftime("%Y%m%d_%H%M%S")
+        metadata_path = metadata_save_dir / f"pipeline_metadata_{ts}.json"
+        
+        with open(metadata_path, "w") as f:
+            json.dump(metadata_payload, f, indent=2)
 
     logger.info("=" * 60)
     return output_file

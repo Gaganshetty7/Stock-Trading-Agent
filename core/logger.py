@@ -25,10 +25,9 @@ console = Console(theme=_theme)
 _LOG_FMT = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
 
 # ── Run log file (one per run, shared across all loggers) ─────────────────────
-RUN_TIMESTAMP = datetime.now().strftime('%Y%m%d_%H%M%S')
-_log_dir = Path(BASE_DIR) / "logs"
+_log_dir = Path(BASE_DIR) / "logs" / "system_logs"
 _log_dir.mkdir(parents=True, exist_ok=True)  # ensure directory exists before opening file
-_run_log_file = _log_dir / f"{RUN_TIMESTAMP}.log"
+_run_log_file = _log_dir / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 _file_handler = logging.FileHandler(_run_log_file, encoding="utf-8")
 _file_handler.setLevel(logging.DEBUG)
 _file_handler.setFormatter(logging.Formatter(_LOG_FMT))
@@ -48,8 +47,6 @@ def get_logger(
                          Parent directories are created automatically.
         console_output:  If False, suppresses Rich console output.
                          Useful for noisy tools where you only want file logs.
-
-    Every logger always writes to the shared run log file regardless of options.
     """
     logger = logging.getLogger(name)
     if not logger.handlers:
@@ -64,8 +61,8 @@ def get_logger(
             )
             logger.addHandler(handler)
 
-        # ── Shared run log (always attached) ──────────────────────────────
-        logger.addHandler(_file_handler)
+
+            logger.addHandler(_file_handler)
 
         # ── Dedicated log file (optional) ─────────────────────────────────
         if log_file:
@@ -75,6 +72,8 @@ def get_logger(
             dedicated_fh.setLevel(logging.DEBUG)
             dedicated_fh.setFormatter(logging.Formatter(_LOG_FMT))
             logger.addHandler(dedicated_fh)
+        
+        
 
         logger.setLevel(logging.DEBUG)
         logger.propagate = False
@@ -84,7 +83,7 @@ def get_logger(
 # ── ReAct step printers ───────────────────────────────────────────────────────
 # Shared logger for ReAct helpers — wired to _file_handler so every step is
 # captured on disk. console.print() handles the rich terminal output separately.
-_agent_logger = logging.getLogger("react")
+_agent_logger = logging.getLogger("REACT_STEP")
 if not _agent_logger.handlers:
     _agent_logger.addHandler(_file_handler)
     _agent_logger.setLevel(logging.DEBUG)

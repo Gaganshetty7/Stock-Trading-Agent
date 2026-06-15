@@ -17,7 +17,7 @@ from pathlib import Path
 from .models import CallRecord
 from core.logger import get_logger
 
-logger = get_logger("usage_tracker", log_file="logs/usage_tracker.log", console_output=False)
+logger = get_logger("usage_tracker", console_output=False)
 
 LOG_BASE            = Path("logs/usage_tracker")
 DAILY_REQUEST_LIMIT = 500

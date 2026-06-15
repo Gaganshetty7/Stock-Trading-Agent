@@ -10,7 +10,7 @@ from tools.storage.file_writer import write_json
 from tools.web.selector.settings import TOP_N, ALLOWED_TRENDS, MIN_CONFIDENCE, MIN_IMPACT, STEP, COMBINED_SCORE_WEIGHTS
 from core.logger import get_logger
 
-logger = get_logger("Selector")
+logger = get_logger("selector")
 
 
 # ─────────────── LOCAL HELPERS ───────────────

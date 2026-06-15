@@ -12,7 +12,7 @@ from .helpers.storage import append_call
 
 from core.logger import get_logger
 
-logger = get_logger("usage_tracker", log_file="logs/usage_tracker.log", console_output=False)
+logger = get_logger("usage_tracker", console_output=False)
 
 
 # ─────────────────────────────────────────────
