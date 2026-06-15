@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from config.settings import OUTPUTS_DIR
-from core.logger import get_logger, RUN_TIMESTAMP
+from core.logger import get_logger
 
 logger = get_logger("file_writer")
 
@@ -18,7 +18,9 @@ async def write_json(filename_prefix: str, data: dict | list, overwrite: bool = 
     if overwrite:
         filename = f"{filename_prefix}.json"
     else:
-        filename = f"{filename_prefix}_{RUN_TIMESTAMP}.json"
+        IST = timezone(timedelta(hours=5, minutes=30))
+        timestamp = datetime.now(IST).strftime("%Y%m%d_%H%M%S")
+        filename = f"{filename_prefix}_{timestamp}.json"
     
     filepath = Path(OUTPUTS_DIR) / filename
 

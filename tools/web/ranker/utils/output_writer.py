@@ -3,7 +3,7 @@ from pathlib import Path
 from tools.storage.file_writer import write_json
 import json
 from .logger import logger
-from core.logger import RUN_TIMESTAMP
+from datetime import datetime, timezone, timedelta
 
 async def save_ranker_output(
     output_data: Dict,
@@ -35,7 +35,9 @@ async def save_ranker_output(
         
         metadata_save_dir = Path("logs/ranker/batch_logs")
         metadata_save_dir.mkdir(parents=True, exist_ok=True)
-        metadata_path = metadata_save_dir / f"pipeline_metadata_{RUN_TIMESTAMP}.json"
+        IST = timezone(timedelta(hours=5, minutes=30))
+        ts = datetime.now(IST).strftime("%Y%m%d_%H%M%S")
+        metadata_path = metadata_save_dir / f"pipeline_metadata_{ts}.json"
         
         with open(metadata_path, "w") as f:
             json.dump(metadata_payload, f, indent=2)

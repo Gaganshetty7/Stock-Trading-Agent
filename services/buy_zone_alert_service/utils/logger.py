@@ -2,6 +2,7 @@ import logging
 import os
 from datetime import datetime
 from core.logger import RUN_TIMESTAMP
+from core.logger import RUN_TIMESTAMP
 
 def setup_logger() -> logging.Logger:
     os.makedirs("logs", exist_ok=True)
@@ -22,8 +23,8 @@ def setup_logger() -> logging.Logger:
     root.addHandler(console)
 
     # ── Full service file log (DEBUG and above) ──────────────────────────────
-    os.makedirs("logs/services/buy-zone-alert-service", exist_ok=True)
-    log_file = f"logs/services/buy-zone-alert-service/bz_alert_{RUN_TIMESTAMP}.log"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = f"logs/bz_alert_{timestamp}.log"
     file_fh = logging.FileHandler(log_file)
     file_fh.setFormatter(fmt)
     file_fh.setLevel(logging.DEBUG)
