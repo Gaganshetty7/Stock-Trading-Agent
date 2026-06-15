@@ -38,7 +38,6 @@ def get_logger(
     name: str,
     log_file: Optional[Union[str, Path]] = None,
     console_output: bool = False,
-    shared_log: bool = True,
 ) -> logging.Logger:
     """Create or retrieve a named logger.
 
@@ -48,7 +47,6 @@ def get_logger(
                          Parent directories are created automatically.
         console_output:  If False, suppresses Rich console output.
                          Useful for noisy tools where you only want file logs.
-        shared_log:      If True, attaches the shared run log file. Set False to exclude.
     """
     logger = logging.getLogger(name)
     if not logger.handlers:
@@ -63,8 +61,7 @@ def get_logger(
             )
             logger.addHandler(handler)
 
-        # ── Shared run log (optional) ───────────────────────────────────────
-        if shared_log:
+
             logger.addHandler(_file_handler)
 
         # ── Dedicated log file (optional) ─────────────────────────────────
@@ -76,8 +73,7 @@ def get_logger(
             dedicated_fh.setFormatter(logging.Formatter(_LOG_FMT))
             logger.addHandler(dedicated_fh)
         
-        if not logger.handlers:
-            logger.addHandler(logging.NullHandler())
+        
 
         logger.setLevel(logging.DEBUG)
         logger.propagate = False
