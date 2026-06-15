@@ -1,8 +1,7 @@
 import logging
 import os
 from datetime import datetime
-from core.logger import RUN_TIMESTAMP
-from core.logger import RUN_TIMESTAMP
+
 
 def setup_logger() -> logging.Logger:
     os.makedirs("logs", exist_ok=True)
