@@ -8,9 +8,9 @@ from typing import Optional, Dict, List
 from config.settings import OUTPUTS_DIR
 from tools.storage.file_writer import write_json
 from tools.web.selector.settings import TOP_N, ALLOWED_TRENDS, MIN_CONFIDENCE, MIN_IMPACT, STEP, COMBINED_SCORE_WEIGHTS
-from core.logger import get_logger
+from core.logger import get_logger, RUN_TIMESTAMP
 
-logger = get_logger("Selector")
+logger = get_logger("selector")
 
 
 # ─────────────── LOCAL HELPERS ───────────────
@@ -20,9 +20,7 @@ async def _write_text(filename_prefix: str, content: str, extension: str = "txt"
     Local helper to write plain text since file_writer is JSON-only.
     Maintains IST timestamping and output directory logic.
     """
-    IST = timezone(timedelta(hours=5, minutes=30))
-    timestamp = datetime.now(IST).strftime("%Y%m%d_%H%M%S")
-    filename = f"{filename_prefix}_{timestamp}.{extension}"
+    filename = f"{filename_prefix}_{RUN_TIMESTAMP}.{extension}"
     
     filepath = Path(OUTPUTS_DIR) / filename
     filepath.parent.mkdir(parents=True, exist_ok=True)

@@ -8,7 +8,7 @@ from pathlib import Path
 import aiohttp
 import feedparser
 
-from core.logger import get_logger
+from core.logger import get_logger, RUN_TIMESTAMP
 from .queries import FINAL_MASTER_QUERY_LIST
 from .text_helpers import (
     IST, _DT_MIN, clean_text, get_headers, 
@@ -179,7 +179,6 @@ async def fetch_broad_market_rss(max_age_hours) -> dict:
     mapped_news_data = map_news_to_tickers(unique, alias_lookup)
     logger.info(f"Mapped to {len(mapped_news_data)} unique companies")
     
-    timestamp = datetime.now(IST).strftime("%Y%m%d_%H%M%S")
     outputs_dir = Path("outputs")
     outputs_dir.mkdir(parents=True, exist_ok=True)
     
@@ -194,7 +193,7 @@ async def fetch_broad_market_rss(max_age_hours) -> dict:
         "mapped_news": mapped_news_data
     }
     
-    output_file = outputs_dir / f"mapped_news_{timestamp}.json"
+    output_file = outputs_dir / f"mapped_news_{RUN_TIMESTAMP}.json"
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
         

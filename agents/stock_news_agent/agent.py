@@ -8,7 +8,7 @@ class StockNewsAgent(BaseAgent):
 
     @property
     def name(self) -> str:
-        return "stock_news_agent"
+        return "StockNewsAgent"
 
     @property
     def skill_path(self) -> str:

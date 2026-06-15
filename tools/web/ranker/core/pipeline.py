@@ -2,7 +2,7 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, Optional, Tuple
 
-from ..api_quota_tracker.quota_tracker import log_quota_attempt
+
 from ..config.settings import (
     MARKET_CLOSED_MULTIPLIER,
     MIN_CONFIDENCE,
@@ -52,7 +52,6 @@ async def execute_ranker_pipeline(
     final_results = []
 
     for i, batch_tickers in enumerate(batches):
-        log_quota_attempt(NEWS_RANKER_MODEL, "START")
         validated, status = await run_batch(
             batch_tickers=batch_tickers,
             batch_index=i,

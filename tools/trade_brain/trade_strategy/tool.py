@@ -4,7 +4,7 @@ from .core.payload import load_technicals_payload
 from .core.pipeline import execute_trade_brain_pipeline
 from core.logger import get_logger
 
-logger = get_logger("TradeStrategy")
+logger = get_logger("trade_strategy")
 
 async def trade_strategy(file_path: Optional[str] = None) -> Dict:
     """
