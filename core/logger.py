@@ -27,7 +27,7 @@ _LOG_FMT = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
 # ── Run log file (one per run, shared across all loggers) ─────────────────────
 _log_dir = Path(BASE_DIR) / "logs" / "system_logs"
 _log_dir.mkdir(parents=True, exist_ok=True)  # ensure directory exists before opening file
-_run_log_file = _log_dir / f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.log"
+_run_log_file = _log_dir / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 _file_handler = logging.FileHandler(_run_log_file, encoding="utf-8")
 _file_handler.setLevel(logging.DEBUG)
 _file_handler.setFormatter(logging.Formatter(_LOG_FMT))
