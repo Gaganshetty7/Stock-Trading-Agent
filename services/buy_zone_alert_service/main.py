@@ -13,6 +13,7 @@ import glob
 import logging
 import os
 import sys
+import asyncio
 
 from dotenv import load_dotenv
 
@@ -72,7 +73,7 @@ def main() -> None:
     try:
         scheduler = MonitoringScheduler(watchlist_data)
         logger.info("[MAIN] Service startup initialized.")
-        scheduler.run()
+        asyncio.run(scheduler.run())
     except KeyboardInterrupt:
         logger.info("\n[MAIN] Interrupted by user — shutting down.")
         logger.info(f"[MAIN] Final watchlist state: {len(scheduler.watchlist)} active tracking.")

@@ -1,54 +1,50 @@
 import logging
 from typing import Dict, List
 
-import yfinance as yf
+from tools.market.technical_analysis_tool.upstox_client import fetch_ltp_batch
+from tools.market.technical_analysis_tool.helpers.symbol_resolver import resolve_symbols_batch
 
 logger = logging.getLogger(__name__)
 
 
-def fetch_prices(symbols: List[str]) -> Dict[str, float]:
+async def fetch_prices(symbols: List[str]) -> Dict[str, float]:
     """
-    Fetch the latest available price for each symbol via yfinance.
-
-    Strategy:
-      1. Try ticker.fast_info.last_price  — fastest, real-time during market hours.
-      2. Fall back to 1-minute history     — works when fast_info returns None/0.
-
-    Returns a dict of symbol → price.  Symbols that fail are omitted.
+    Fetch the latest real-time LTP for each symbol via Upstox API.
+    
+    Returns a dict of ticker → price.
     """
     if not symbols:
         return {}
 
-    prices: Dict[str, float] = {}
+    try:
+        # 1. Resolve tickers to Upstox instrument keys (e.g. RELIANCE -> NSE_EQ|...)
+        symbol_mapping = await resolve_symbols_batch(symbols)
+        
+        # 2. Extract key list for Upstox call
+        resolvable_symbols = [s for s in symbols if symbol_mapping.get(s)]
+        instrument_keys = [symbol_mapping[s] for s in resolvable_symbols]
+        
+        if not instrument_keys:
+            logger.warning(f"[MARKET DATA] No symbols could be resolved: {symbols}")
+            return {}
 
-    for symbol in symbols:
-        price: float | None = None
+        # 3. Fetch LTP batch from Upstox
+        ltp_data = await fetch_ltp_batch(instrument_keys)
+        
+        # 4. Map back to original tickers
+        prices: Dict[str, float] = {}
+        # Invert mapping to go from instrument_key -> ticker
+        key_to_ticker = {v: k for k, v in symbol_mapping.items()}
+        
+        for key, ltp in ltp_data.items():
+            if ltp is not None:
+                ticker = key_to_ticker.get(key)
+                if ticker:
+                    prices[ticker] = round(float(ltp), 2)
+                    logger.debug(f"[UPSTOX PRICE] {ticker:<15} ₹{ltp}")
 
-        try:
-            ticker = yf.Ticker(symbol)
+        return prices
 
-            # ── Attempt 1: fast_info ─────────────────────────────────────────
-            try:
-                raw = ticker.fast_info.last_price
-                if raw and float(raw) > 0:
-                    price = round(float(raw), 2)
-            except Exception:
-                pass
-
-            # ── Attempt 2: 1-minute history ──────────────────────────────────
-            if price is None:
-                hist = ticker.history(period="1d", interval="1m")
-                if not hist.empty:
-                    price = round(float(hist["Close"].iloc[-1]), 2)
-
-        except Exception as exc:
-            logger.error(f"[PRICE ERROR] {symbol}: {exc}")
-            continue
-
-        if price and price > 0:
-            prices[symbol] = price
-            logger.debug(f"[PRICE] {symbol:<22} ₹{price}")
-        else:
-            logger.debug(f"[PRICE] {symbol:<22} — no valid price returned")
-
-    return prices
+    except Exception as exc:
+        logger.error(f"[MARKET DATA ERROR] Failed to fetch Upstox prices: {exc}")
+        return {}

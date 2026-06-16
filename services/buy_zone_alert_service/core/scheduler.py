@@ -1,5 +1,5 @@
 import logging
-import time
+import asyncio
 from datetime import datetime
 from typing import Dict
 
@@ -23,7 +23,7 @@ class MonitoringScheduler:
         self.watchlist = watchlist
         self._tick_count: int = 0
 
-    def run(self) -> None:
+    async def run(self) -> None:
         self._print_banner()
 
         while True:
@@ -31,16 +31,16 @@ class MonitoringScheduler:
                 logger.info("[SCHEDULER] No active stocks remaining — service complete.")
                 break
 
-            self._run_tick()
+            await self._run_tick()
 
             if not self.watchlist:
                 logger.info("[SCHEDULER] All stocks resolved — service complete.")
                 break
 
             logger.debug(f"[SLEEP] {TICK_INTERVAL_SECONDS}s until next tick ({len(self.watchlist)} active)")
-            time.sleep(TICK_INTERVAL_SECONDS)
+            await asyncio.sleep(TICK_INTERVAL_SECONDS)
 
-    def _run_tick(self) -> None:
+    async def _run_tick(self) -> None:
         self._tick_count += 1
         now_str = datetime.now().strftime("%H:%M:%S")
 
@@ -64,7 +64,7 @@ class MonitoringScheduler:
         # ── Step 2: Fetch prices ──────────────────────────────────────────────
         symbols = list(self.watchlist.keys())
         logger.debug(f"[FETCH] Requesting prices for: {', '.join(symbols)}")
-        prices = fetch_prices(symbols)
+        prices = await fetch_prices(symbols)
 
         if not prices:
             logger.debug("[FETCH] No prices returned this tick — will retry next tick.")
