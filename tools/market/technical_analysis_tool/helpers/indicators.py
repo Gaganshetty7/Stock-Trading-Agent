@@ -25,7 +25,7 @@ def calculate_rsi(data, period=14):
     return float(rsi.iloc[-1])
 
 
-def process_stock(ticker, data, data_5m, data_15m):
+def process_stock(ticker, data, data_5m, data_15m, ltp: float = None):
     try:
         if data.empty:
             raise Exception("No 1m data")
@@ -46,7 +46,8 @@ def process_stock(ticker, data, data_5m, data_15m):
             raise Exception("Insufficient 15m data")
 
         latest_completed = data.iloc[-2]
-        current_price    = float(latest_completed["Close"])
+        last_completed_close = float(latest_completed["Close"])
+        current_price = ltp if ltp is not None else last_completed_close
 
         last_block = data.iloc[-16:-1]
         H = float(last_block["High"].max())
@@ -106,11 +107,12 @@ def process_stock(ticker, data, data_5m, data_15m):
             "timestamp" : datetime.now(IST).isoformat(),
             "status"    : "ok",
             "market_data": {
-                "current_price" : round(current_price, 2),
-                "today_open"    : round(today_open, 2),
-                "today_high"    : round(today_high, 2),
-                "today_low"     : round(today_low, 2),
-                "previous_close": round(previous_close, 2)
+                "current_price"        : round(current_price, 2),
+                "last_completed_close" : round(last_completed_close, 2),
+                "today_open"           : round(today_open, 2),
+                "today_high"           : round(today_high, 2),
+                "today_low"            : round(today_low, 2),
+                "previous_close"       : round(previous_close, 2)
             },
             "technical_indicators": {
                 "pivot"  : round(P, 2),
