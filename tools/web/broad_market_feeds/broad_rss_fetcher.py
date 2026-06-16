@@ -180,7 +180,7 @@ async def fetch_broad_market_rss(max_age_hours) -> dict:
     logger.info(f"Mapped to {len(mapped_news_data)} unique companies")
     
     timestamp = datetime.now(IST).strftime("%Y%m%d_%H%M%S")
-    outputs_dir = Path("outputs")
+    outputs_dir = Path("outputs/StockNewsAgent/rss_fetcher")
     outputs_dir.mkdir(parents=True, exist_ok=True)
     
     _cleanup_legacy_files(outputs_dir)

@@ -10,12 +10,12 @@ def load_technicals_payload(file_path: Optional[str] = None) -> Tuple[Dict, str]
     """
     Locates and loads the JSON technical analysis payload.
     If no file_path is given, defaults to the latest analysis_batch_*.json
-    in outputs/technicals/
+    in outputs/TechnicalAnalystAgent/technicals/
     """
     if not file_path:
-        files = glob.glob("outputs/technicals/analysis_batch_*.json")
+        files = glob.glob("outputs/TechnicalAnalystAgent/technicals/analysis_batch_*.json")
         if not files:
-            raise ValueError("No analysis_batch_*.json found in outputs/technicals/")
+            raise ValueError("No analysis_batch_*.json found in outputs/TechnicalAnalystAgent/technicals/")
         file_path = max(files, key=os.path.getctime)
         
     logger.info(f"Loading technicals payload from: {file_path}")
