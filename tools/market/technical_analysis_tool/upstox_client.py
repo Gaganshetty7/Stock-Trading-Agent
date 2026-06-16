@@ -62,7 +62,7 @@ class UpstoxClient:
             to_date = datetime.now(IST).date()
             from_date = to_date - timedelta(days=days_back)
 
-            # Build URL
+            # Build URL (Upstox maps Arg1 to toDate and Arg2 to fromDate)
             url = (
                 f"{self.base_url}/historical-candle/{instrument_key}/minutes/{interval}/"
                 f"{to_date.isoformat()}/{from_date.isoformat()}"
@@ -212,7 +212,10 @@ async def fetch_upstox_batch(
     tasks = []
     for instrument_key in instrument_keys:
         for interval in intervals:
-            tasks.append((instrument_key, interval, client.fetch_candles(instrument_key, interval)))
+            # Match yfinance lookback: 1m → 1 day, 5m → 5 days, 15m → 5 days
+            # We use days_back=1 for 1m to ensure we have enough data even at market open
+            days_back = 1 if interval == "1" else 5
+            tasks.append((instrument_key, interval, client.fetch_candles(instrument_key, interval, days_back)))
 
     # Execute all tasks concurrently (respects per-request rate limiting)
     for instrument_key, interval, task in tasks:
