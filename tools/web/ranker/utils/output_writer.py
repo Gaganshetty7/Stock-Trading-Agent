@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 
 async def save_ranker_output(
     output_data: Dict,
-    output_subdir: str = "ranker",
+    output_subdir: str = "StockNewsAgent/ranker",
     elapsed_time: Optional[float] = None,
     metrics: object | None = None,
 ) -> str:

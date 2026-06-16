@@ -40,7 +40,7 @@ def _load_signals(signals_file: Optional[str] = None) -> Dict:
     If no path is given, auto-discovers the latest one in outputs/ranker/.
     """
     if not signals_file:
-        files = glob.glob("outputs/ranker/intraday_signals_*.json")
+        files = glob.glob("outputs/StockNewsAgent/ranker/intraday_signals_*.json")
         if files:
             signals_file = max(files, key=os.path.getctime)
             logger.info(f"Auto-discovered latest signals file: {signals_file}")
@@ -184,11 +184,11 @@ async def select_top_stocks(signals_file: Optional[str] = None) -> Dict:
         },
         "candidate_pool": candidate_pool,
     }
-    pool_file = await write_json("candidate_pool/candidate_pool", pool_payload)
+    pool_file = await write_json("StockNewsAgent/selector/candidate_pool/candidate_pool", pool_payload)
 
     # ── Save top tickers (plain text, no brackets) ──
     tickers_str = ", ".join(selected_tickers)
-    tickers_file = await _write_text("top_tickers/top_tickers", tickers_str)
+    tickers_file = await _write_text("StockNewsAgent/selector/top_tickers/top_tickers", tickers_str)
 
     logger.info(f"Selection complete: {len(selected_tickers)} tickers selected ({', '.join(selected_tickers[:3])}{'...' if len(selected_tickers) > 3 else ''})")
     return {

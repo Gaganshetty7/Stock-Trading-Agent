@@ -28,7 +28,7 @@ def find_latest_plan() -> str:
     """
     # Assuming main.py is run from trading-agent/services/buy_zone_alert_service
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    plans_dir = os.path.join(base_dir, "outputs", "trade_strategy")
+    plans_dir = os.path.join(base_dir, "outputs", "TradeBrainAgent", "trade_strategy")
     
     pattern = os.path.join(plans_dir, "plan_*.json")
     matches = sorted(glob.glob(pattern))

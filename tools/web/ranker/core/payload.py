@@ -8,7 +8,7 @@ from ..utils.logger import logger
 
 def load_payload(payload_file=None):
     if not payload_file:
-        files = glob.glob("outputs/mapped_news_*.json")
+        files = glob.glob("outputs/StockNewsAgent/rss_fetcher/mapped_news_*.json")
         if files:
             payload_file = max(files, key=os.path.getctime)
         else:
