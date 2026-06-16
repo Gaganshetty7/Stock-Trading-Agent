@@ -221,12 +221,7 @@ class AutoTrackingLLMWrapper:
             record.model, total
         )
 
-        # Log to core logger
-        logger.info(
-            f"LLM Call: {record.model} | Status: {status} | "
-            f"Tokens: {total} | Context: {total}/{record.context_limit} ({record.context_window_used_pct}%) | "
-            f"Duration: {record.duration_seconds}s"
-        )
+     
 
         append_call(record)
 

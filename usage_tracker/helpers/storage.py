@@ -19,7 +19,7 @@ from core.logger import get_logger
 
 logger = get_logger("usage_tracker", console_output=False)
 
-LOG_BASE            = Path("logs/usage_tracker")
+LOG_BASE            = Path("logs/system_logs/usage_tracker")
 DAILY_REQUEST_LIMIT = 500
 
 
@@ -231,8 +231,10 @@ def _write_summary(date_str: str, r: CallRecord) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _ensure(folder: Path, date_str: str) -> Path:
-    folder.mkdir(parents=True, exist_ok=True)
-    return folder / f"{date_str}.json"
+    # Use .resolve() to turn it into an absolute safe path before creating it
+    target_dir = folder.resolve()
+    target_dir.mkdir(parents=True, exist_ok=True)
+    return target_dir / f"{date_str}.json"
 
 def _load(path: Path) -> dict | None:
     if path.exists():
