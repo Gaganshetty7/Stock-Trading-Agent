@@ -24,7 +24,9 @@ OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 NEWS_RANKER_LLM_PROVIDER: str = os.getenv("NEWS_RANKER_LLM_PROVIDER")
 NEWS_RANKER_MODEL: str = os.getenv("NEWS_RANKER_MODEL")
 NEWS_RANKER_LLM_TEMPERATURE: float = float(os.getenv("NEWS_RANKER_LLM_TEMPERATURE", "0"))
-NEWS_RANKER_API_KEY: str = os.getenv("NEWS_RANKER_API_KEY", "")
+NEWS_RANKER_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+if not NEWS_RANKER_API_KEY:
+    raise ValueError("OPENAI_API_KEY environment variable is not set in the OS environment.")
 
 # Trading Supervisor
 TRADING_SUPERVISOR_LLM_PROVIDER: str = os.getenv("TRADING_SUPERVISOR_LLM_PROVIDER")
