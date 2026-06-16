@@ -48,10 +48,6 @@ def process_stock(ticker, data, data_5m, data_15m, ltp: float = None):
         latest_completed = data.iloc[-2]
         last_completed_close = float(latest_completed["Close"])
         current_price = ltp if ltp is not None else last_completed_close
-        
-        import logging
-        logger = logging.getLogger("tech_analysis")
-        logger.info(f"{ticker} -> LTP (Live): {current_price} | Last Completed Close: {last_completed_close}")
 
         last_block = data.iloc[-16:-1]
         H = float(last_block["High"].max())
