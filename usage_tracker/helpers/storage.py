@@ -230,11 +230,6 @@ def _write_summary(date_str: str, r: CallRecord) -> None:
 # Shared I/O
 # ─────────────────────────────────────────────────────────────────────────────
 
-# def _ensure(folder: Path, date_str: str) -> Path:
-#     # Use .resolve() to turn it into an absolute safe path before creating it
-#     target_dir = folder.resolve()
-#     target_dir.mkdir(parents=True, exist_ok=True)
-#     return target_dir / f"{date_str}.json"
 def _ensure(folder: Path, date_str: str) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     return folder / f"{date_str}.json"
