@@ -38,3 +38,7 @@ TRADE_STRATEGY_MODEL: str = os.getenv("TRADE_STRATEGY_MODEL")
 TRADE_STRATEGY_LLM_TEMPERATURE: float = float(os.getenv("TRADE_STRATEGY_LLM_TEMPERATURE", "0"))
 TRADE_STRATEGY_API_KEY: str = os.getenv("TRADE_STRATEGY_API_KEY", "")
 TRADE_STRATEGY_MAX_RETRIES: int = int(os.getenv("TRADE_STRATEGY_MAX_RETRIES", "0"))
+
+# ── Upstox API Config ──────────────────────────────────────────────────────────
+UPSTOX_TOKEN: str = os.getenv("UPSTOX_TOKEN", "")
+UPSTOX_API_BASE_URL: str = "https://api.upstox.com/v3"

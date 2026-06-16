@@ -64,6 +64,7 @@ def init_tools() -> None:
         "fetch_and_save_technicals",
         fetch_and_save_technicals,
         "Fetches technical analysis for a list of stock tickers in a single batch and saves it directly to disk. "
+        "Uses Upstox Analytics API for real-time NSE market data. "
         "Input: tickers (list of str). Returns the filepath where the technical indicators were saved."
     )
     register_tool(

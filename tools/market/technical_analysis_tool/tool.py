@@ -5,7 +5,7 @@ Technical Analysis Tool
 -----------------------
 Batch on-demand technical analysis for a list of NSE stock tickers.
 
-Fetches live OHLCV data from yfinance in a single batch request and returns
+Fetches live OHLCV data from Upstox Analytics API in a single batch request and returns
 full technical indicators immediately. No background pipeline or cache required.
 
 Agent usage (via core registry):
@@ -14,31 +14,31 @@ Agent usage (via core registry):
 
 Direct usage (for testing/pipelines):
     from tools.market.technical_analysis_tool import run_technical_analysis
-    result = await run_technical_analysis(["RELIANCE", "TCS.NS"])
+    result = await run_technical_analysis(["RELIANCE", "TCS"])
 """
 
-import warnings
 import logging
 from datetime import datetime
+import asyncio
 
-import yfinance as yf
-
+from tools.market.technical_analysis_tool.upstox_client import UpstoxClient, fetch_upstox_batch, fetch_ltp_batch
+from tools.market.technical_analysis_tool.helpers.symbol_resolver import resolve_symbols_batch
 from tools.market.technical_analysis_tool.helpers.indicators import process_stock
 from tools.storage.file_writer import write_json
 from core.logger import get_logger
 
 logger = get_logger("TechAnalysis")
+from config.settings import UPSTOX_TOKEN, UPSTOX_API_BASE_URL
 
-logging.getLogger("yfinance").setLevel(logging.CRITICAL)
-warnings.filterwarnings("ignore")
+logger = logging.getLogger(__name__)
 
 
 async def run_technical_analysis(tickers: list[str]) -> dict:
     """
     Fetch and analyze a list of NSE stock tickers on demand in a single batch.
 
-    Automatically appends '.NS' suffix to any ticker that is missing it.
-    Downloads 1-minute (intraday) and 5-minute OHLCV data from yfinance,
+    Normalizes tickers to uppercase.
+    Fetches 1-minute, 5-minute, and 15-minute OHLCV data from Upstox Analytics API,
     then computes and returns for each ticker:
       - market_data         : current price, open, high, low, previous close
       - technical_indicators: RSI (1m + 5m), VWAP, MA20, overall trend
@@ -46,52 +46,76 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
       - volume_analysis     : total volume, last candle, average, strength ratio
 
     Args:
-        tickers: List of NSE stock symbols, e.g. ['RELIANCE', 'TCS.NS', 'HDFCBANK']
-                 Missing '.NS' suffixes are added automatically.
+        tickers: List of NSE stock symbols, e.g. ['RELIANCE', 'TCS', 'HDFCBANK']
 
     Returns:
-        dict — Maps each ticker (with .NS) to its full analysis or an error dict.
+        dict — Maps each ticker to its full analysis or an error dict.
     """
-    formatted_tickers = []
+    # Normalize tickers to uppercase
+    clean_tickers = []
     for t in tickers:
         clean_t = t.strip().upper()
-        if not clean_t.endswith(".NS"):
-            clean_t += ".NS"
-        formatted_tickers.append(clean_t)
+        if clean_t:
+            clean_tickers.append(clean_t)
 
-    # Note: Using multi_level_index=False for multiple tickers is not robust in yf.
-    # When fetching multiple tickers, it's safer to let yf return the default MultiIndex.
-    data_1m = yf.download(
-        formatted_tickers, period="1d", interval="1m",
-        auto_adjust=True, progress=False
-    )
-    data_5m = yf.download(
-        formatted_tickers, period="5d", interval="5m",
-        auto_adjust=True, progress=False
-    )
-    data_15m = yf.download(
-        formatted_tickers, period="5d", interval="15m",
-        auto_adjust=True, progress=False
-    )
+    if not clean_tickers:
+        return {}
 
+    # Resolve symbols to Upstox instrument keys
+    symbol_mapping = await resolve_symbols_batch(clean_tickers)
+
+    # Filter out unresolved symbols
+    resolvable_tickers = [t for t in clean_tickers if symbol_mapping.get(t)]
+    if not resolvable_tickers:
+        logger.error(f"Could not resolve any symbols from {clean_tickers}")
+        return {t: {"stock": t, "status": "error", "message": "Symbol not found"} 
+                for t in clean_tickers}
+
+    # Fetch candles and LTP from Upstox (1m, 5m, 15m)
+    instrument_keys = [symbol_mapping[t] for t in resolvable_tickers]
+    upstox_data_task = asyncio.create_task(fetch_upstox_batch(instrument_keys, intervals=["1", "5", "15"]))
+    ltp_data_task = asyncio.create_task(fetch_ltp_batch(instrument_keys))
+    upstox_data, ltp_data = await asyncio.gather(upstox_data_task, ltp_data_task)
+
+    # Process each ticker
     results = {}
-    for ticker in formatted_tickers:
+    for ticker in clean_tickers:
+        output_ticker = ticker
+        
         try:
-            if len(formatted_tickers) == 1:
-                # Single ticker: yfinance returns flat columns (Close, Open, etc.)
-                ticker_1m = data_1m.copy()
-                ticker_5m = data_5m.copy()
-                ticker_15m = data_15m.copy()
-            else:
-                # Multiple tickers: yfinance returns MultiIndex (Price, Ticker)
-                ticker_1m = data_1m.xs(ticker, axis=1, level=1).copy()
-                ticker_5m = data_5m.xs(ticker, axis=1, level=1).copy()
-                ticker_15m = data_15m.xs(ticker, axis=1, level=1).copy()
+            instrument_key = symbol_mapping.get(ticker)
+            if not instrument_key:
+                results[output_ticker] = {
+                    "stock": output_ticker,
+                    "status": "error",
+                    "message": "Symbol resolution failed",
+                    "timestamp": datetime.now().isoformat()
+                }
+                continue
 
-            results[ticker] = process_stock(ticker, ticker_1m, ticker_5m, ticker_15m)
+            # Get DataFrames for each interval
+            ticker_data = upstox_data.get(instrument_key, {})
+            data_1m = ticker_data.get("1")
+            data_5m = ticker_data.get("5")
+            data_15m = ticker_data.get("15")
+
+            # Validate data availability
+            if data_1m is None or data_5m is None or data_15m is None:
+                results[output_ticker] = {
+                    "stock": output_ticker,
+                    "status": "error",
+                    "message": "Failed to fetch candle data from Upstox",
+                    "timestamp": datetime.now().isoformat()
+                }
+                continue
+
+            # Pass to indicator processor
+            ltp = ltp_data.get(instrument_key)
+            results[output_ticker] = process_stock(output_ticker, data_1m, data_5m, data_15m, ltp=ltp)
+
         except Exception as e:
-            results[ticker] = {
-                "stock": ticker,
+            results[output_ticker] = {
+                "stock": output_ticker,
                 "status": "error",
                 "message": str(e),
                 "timestamp": datetime.now().isoformat()
@@ -110,8 +134,7 @@ async def fetch_and_save_technicals(tickers: list[str]) -> dict:
     (which causes truncation and data loss in the ReAct loop).
 
     Args:
-        tickers: List of NSE stock symbols, e.g. ['RELIANCE', 'TCS.NS', 'HDFCBANK']
-                 Missing '.NS' suffixes are added automatically.
+        tickers: List of NSE stock symbols, e.g. ['RELIANCE', 'TCS', 'HDFCBANK']
 
     Returns:
         dict — Contains status, file_path, and list of tickers_processed.
