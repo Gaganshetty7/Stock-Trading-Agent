@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 
 from core.llm import get_llm
 from usage_tracker.wrapper import AutoTrackingLLMWrapper
+from config.settings import NEWS_RANKER_API_KEY
 from ..config.settings import (
-    NEWS_RANKER_API_KEY,
     NEWS_RANKER_MODEL,
     RANKING_TIMEOUT,
     RANKING_BACKOFF_BASE,
