@@ -8,7 +8,7 @@ load_dotenv()
 NEWS_RANKER_MODEL = os.getenv("NEWS_RANKER_MODEL")
 
 # -- Orchestration Parameters --
-RANKING_BATCH_SIZE = 10
+RANKING_BATCH_SIZE = 5
 
 RANKING_CONCURRENCY = 1
 

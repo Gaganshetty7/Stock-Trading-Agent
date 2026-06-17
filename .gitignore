@@ -18,3 +18,6 @@ outputs/
 
 #antigravity
 .antigravityignore
+
+# Upstox instruments master data
+resources/upstox_instruments_master.json
