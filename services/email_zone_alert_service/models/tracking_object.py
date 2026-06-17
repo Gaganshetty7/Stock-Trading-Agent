@@ -39,7 +39,8 @@ class TrackingObject:
 
     # Tracking state
     tracking_started_at: datetime = field(default_factory=datetime.now)
-    status: str = "TRACKING"   # TRACKING | ALERTED | EXPIRED
+    status: str = "AWAITING_ENTRY"   # AWAITING_ENTRY | IN_TRADE | COMPLETED | EXPIRED
+    entry_price: float = 0.0
     alert_sent: bool = False
 
     def elapsed_minutes(self) -> float:

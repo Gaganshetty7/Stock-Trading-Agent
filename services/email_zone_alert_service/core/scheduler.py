@@ -49,7 +49,7 @@ class MonitoringScheduler:
         # ── Step 1: Expiry check ──────────────────────────────────────────────
         expired = []
         for symbol, obj in self.watchlist.items():
-            if obj.elapsed_minutes() > EXPIRY_MINUTES:
+            if obj.status == "AWAITING_ENTRY" and obj.elapsed_minutes() > EXPIRY_MINUTES:
                 logger.debug(f"[EXPIRED] {symbol} elapsed={obj.elapsed_minutes():.1f}m")
                 expired.append(symbol)
 
@@ -78,29 +78,56 @@ class MonitoringScheduler:
                 logger.debug(f"[SKIP] {symbol} — price unavailable this tick")
                 continue
 
-            in_zone = obj.entry_plan.buy_zone.min <= current_price <= obj.entry_plan.buy_zone.max
-            status_icon = "✅" if in_zone else "⏳"
-
-            logger.debug(
-                f"{status_icon} {symbol:<22} ₹{current_price:<10}  "
-                f"zone=₹{obj.entry_plan.buy_zone.min}→₹{obj.entry_plan.buy_zone.max}  "
-                f"{'IN ZONE' if in_zone else 'outside'}"
-            )
-
-            if in_zone:
+            if obj.status == "AWAITING_ENTRY":
+                in_zone = obj.entry_plan.buy_zone.min <= current_price <= obj.entry_plan.buy_zone.max
+                status_icon = "✅" if in_zone else "⏳"
+    
                 logger.debug(
-                    f"[ZONE HIT] {obj.symbol} — ₹{current_price} is inside "
-                    f"₹{obj.entry_plan.buy_zone.min}→₹{obj.entry_plan.buy_zone.max}"
+                    f"{status_icon} {symbol:<22} ₹{current_price:<10}  "
+                    f"zone=₹{obj.entry_plan.buy_zone.min}→₹{obj.entry_plan.buy_zone.max}  "
+                    f"{'IN ZONE' if in_zone else 'outside'}"
                 )
-                success = send_alert(obj, current_price)
-                if success:
-                    obj.status = "ALERTED"
-                    obj.alert_sent = True
-                    to_remove.append(symbol)
+    
+                if in_zone:
+                    logger.debug(
+                        f"[ZONE HIT] {obj.symbol} — ₹{current_price} is inside "
+                        f"₹{obj.entry_plan.buy_zone.min}→₹{obj.entry_plan.buy_zone.max}"
+                    )
+                    success = send_alert(obj, current_price, alert_type="ENTRY")
+                    if success:
+                        obj.status = "IN_TRADE"
+                        obj.entry_price = current_price
+                        obj.alert_sent = True
+                        logger.info(f"[TRACKING] {obj.symbol} moved to IN_TRADE state.")
+                    else:
+                        logger.warning(
+                            f"[RETRY PENDING] Entry alert failed for {obj.symbol}  "
+                            f"— will retry on next tick if still in zone"
+                        )
+                        
+            elif obj.status == "IN_TRADE":
+                if current_price >= obj.target_plan.target_1:
+                    logger.debug(f"[TARGET HIT] {obj.symbol} — ₹{current_price} >= T1: ₹{obj.target_plan.target_1}")
+                    success = send_alert(obj, current_price, alert_type="TARGET")
+                    if success:
+                        obj.status = "COMPLETED"
+                        to_remove.append(symbol)
+                    else:
+                        logger.warning(f"[RETRY PENDING] Target alert failed for {obj.symbol} — retrying on next tick")
+                        
+                elif current_price <= obj.stoploss_plan.hard_stoploss:
+                    logger.debug(f"[STOPLOSS HIT] {obj.symbol} — ₹{current_price} <= SL: ₹{obj.stoploss_plan.hard_stoploss}")
+                    success = send_alert(obj, current_price, alert_type="STOPLOSS")
+                    if success:
+                        obj.status = "COMPLETED"
+                        to_remove.append(symbol)
+                    else:
+                        logger.warning(f"[RETRY PENDING] Stoploss alert failed for {obj.symbol} — retrying on next tick")
+                        
                 else:
-                    logger.warning(
-                        f"[RETRY PENDING] Alert failed for {obj.symbol}  "
-                        f"— will retry on next tick if still in zone"
+                    logger.debug(
+                        f"📈 {symbol:<22} ₹{current_price:<10}  "
+                        f"[IN TRADE] SL=₹{obj.stoploss_plan.hard_stoploss} T1=₹{obj.target_plan.target_1}"
                     )
         
         for symbol in to_remove:

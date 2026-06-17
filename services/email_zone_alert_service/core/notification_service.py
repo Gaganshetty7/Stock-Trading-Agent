@@ -32,19 +32,37 @@ def _get_credentials() -> tuple[Optional[str], Optional[str], Optional[str]]:
 
 # ── Message builder ───────────────────────────────────────────────────────────
 
-def _build_message(obj: TrackingObject, current_price: float) -> EmailMessage:
+def _build_message(obj: TrackingObject, current_price: float, alert_type: str = "ENTRY") -> EmailMessage:
     time_str = datetime.now().strftime("%I:%M %p")
 
     conditions_block = "\n\n".join(
         f"{i + 1}. {c}" for i, c in enumerate(obj.entry_plan.confirmation_conditions)
     )
 
+    if alert_type == "ENTRY":
+        title = "🚨 BUY ZONE REACHED"
+        subject = f"🚨 BUY ALERT: {obj.symbol} at ₹{current_price}"
+        status_text = "Awaiting Confirmation / Active"
+    elif alert_type == "TARGET":
+        title = "✅ TARGET 1 HIT!"
+        subject = f"✅ TARGET HIT: {obj.symbol} at ₹{current_price}"
+        status_text = "Target Achieved"
+    elif alert_type == "STOPLOSS":
+        title = "⚠️ STOP LOSS HIT!"
+        subject = f"⚠️ STOP LOSS HIT: {obj.symbol} at ₹{current_price}"
+        status_text = "Trade Invalidated"
+    else:
+        title = "🔔 STOCK ALERT"
+        subject = f"🔔 ALERT: {obj.symbol} at ₹{current_price}"
+        status_text = "Update"
+
     body = (
-        f"🚨 BUY ZONE REACHED\n\n"
+        f"{title}\n\n"
         f"Stock:\n{obj.symbol}\n\n"
         f"Time:\n{time_str}\n\n"
         f"Current Price:\n{current_price}\n\n"
-        f"Buy Zone:\n{obj.entry_plan.buy_zone.min} → {obj.entry_plan.buy_zone.max}\n\n"
+        f"Entry Zone Was:\n{obj.entry_plan.buy_zone.min} → {obj.entry_plan.buy_zone.max}\n\n"
+        f"Entered At:\n{obj.entry_price if obj.entry_price else 'N/A'}\n\n"
         f"Stoploss:\n{obj.stoploss_plan.hard_stoploss}\n\n"
         f"Targets:\n\n"
         f"T1: {obj.target_plan.target_1}\n\n"
@@ -52,19 +70,19 @@ def _build_message(obj: TrackingObject, current_price: float) -> EmailMessage:
         f"T3: {obj.target_plan.target_3}\n\n"
         f"Confirmation Conditions:\n\n"
         f"{conditions_block}\n\n"
-        f"Status:\nAwaiting Confirmation"
+        f"Status:\n{status_text}"
     )
 
     msg = EmailMessage()
     msg.set_content(body)
-    msg['Subject'] = f"🚨 BUY ALERT: {obj.symbol} at ₹{current_price}"
+    msg['Subject'] = subject
     
     return msg
 
 
 # ── Transport ─────────────────────────────────────────────────────────────────
 
-def send_alert(obj: TrackingObject, current_price: float) -> bool:
+def send_alert(obj: TrackingObject, current_price: float, alert_type: str = "ENTRY") -> bool:
     """
     Build and dispatch an Email message.
     Returns True on success, False on any failure.
@@ -79,7 +97,7 @@ def send_alert(obj: TrackingObject, current_price: float) -> bool:
         )
         return False
 
-    msg = _build_message(obj, current_price)
+    msg = _build_message(obj, current_price, alert_type)
     msg['From'] = sender
     msg['To'] = receiver
 
@@ -91,8 +109,7 @@ def send_alert(obj: TrackingObject, current_price: float) -> bool:
             server.send_message(msg)
 
         logger.info(
-            f"[ALERT SENT] {obj.symbol} @ ₹{current_price}  "
-            f"zone=₹{obj.entry_plan.buy_zone.min}→₹{obj.entry_plan.buy_zone.max}"
+            f"[{alert_type} ALERT SENT] {obj.symbol} @ ₹{current_price}"
         )
         return True
 
