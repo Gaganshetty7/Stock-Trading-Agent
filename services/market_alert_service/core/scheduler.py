@@ -1,11 +1,11 @@
 import logging
 import asyncio
 from datetime import datetime
-from typing import Dict
+from typing import Dict, List
 
 from ..models.tracking_object import TrackingObject
 from .market_data_service import fetch_prices
-from .notification_service import send_telegram_alert
+from .notification import NotificationChannel
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +16,12 @@ EXPIRY_MINUTES: int = 90
 class MonitoringScheduler:
     """
     Single scheduler that maintains the watchlist dict and runs the loop.
-    Evaluates all active stocks per tick.
+    Evaluates all active stocks per tick and broadcasts events to channels.
     """
 
-    def __init__(self, watchlist: Dict[str, TrackingObject]) -> None:
+    def __init__(self, watchlist: Dict[str, TrackingObject], channels: List[NotificationChannel]) -> None:
         self.watchlist = watchlist
+        self.channels = channels
         self._tick_count: int = 0
 
     async def run(self) -> None:
@@ -92,28 +93,46 @@ class MonitoringScheduler:
                     f"[ZONE HIT] {obj.symbol} — ₹{current_price} is inside "
                     f"₹{obj.entry_plan.buy_zone.min}→₹{obj.entry_plan.buy_zone.max}"
                 )
-                success = send_telegram_alert(obj, current_price)
+                success = self._broadcast_alert(obj, current_price, "ENTRY")
                 if success:
                     obj.status = "ALERTED"
                     obj.alert_sent = True
                     to_remove.append(symbol)
                 else:
                     logger.warning(
-                        f"[RETRY PENDING] Alert failed for {obj.symbol}  "
+                        f"[RETRY PENDING] Alert failed for {obj.symbol} on all channels  "
                         f"— will retry on next tick if still in zone"
                     )
         
         for symbol in to_remove:
             del self.watchlist[symbol]
 
+    def _broadcast_alert(self, obj: TrackingObject, current_price: float, alert_type: str) -> bool:
+        """
+        Send alert to all configured channels.
+        Returns True if at least one channel successfully sent the alert.
+        Returns False if all channels failed (or if no channels configured).
+        """
+        if not self.channels:
+            logger.warning("No notification channels configured to broadcast alert.")
+            return True # Consider "sent" if there are no channels, to avoid endless retrying
+
+        success = False
+        for channel in self.channels:
+            if channel.send_alert(obj, current_price, alert_type):
+                success = True
+                
+        return success
+
     def _print_banner(self) -> None:
         lines = [
             "╔══════════════════════════════════════════════╗",
-            "║        BUY ZONE ALERT SERVICE — LIVE         ║",
+            "║       MARKET ALERT SERVICE — LIVE            ║",
             "╚══════════════════════════════════════════════╝",
             f"  Tracking  : {len(self.watchlist)} stock(s)",
             f"  Tick every: {TICK_INTERVAL_SECONDS}s",
             f"  Expiry at : {EXPIRY_MINUTES} minutes",
+            f"  Channels  : {len(self.channels)} active",
             "  ─────────────────────────────────────────────",
         ]
         for sym, obj in self.watchlist.items():

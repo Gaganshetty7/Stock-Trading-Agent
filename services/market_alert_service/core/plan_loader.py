@@ -50,6 +50,9 @@ def load_plan(plan_path: str) -> Dict[str, TrackingObject]:
                 target_3=float(data["target_plan"]["target_3"])
             )
 
+            # Extract optional entry_price if present (more resilient)
+            entry_price = data.get("entry_price")
+
             obj = TrackingObject(
                 symbol=symbol,
                 decision=decision,
@@ -62,6 +65,9 @@ def load_plan(plan_path: str) -> Dict[str, TrackingObject]:
                 post_entry_watchouts=data.get("post_entry_watchouts", []),
                 trade_thesis=data.get("trade_thesis", "")
             )
+            
+            if entry_price is not None:
+                setattr(obj, "entry_price", entry_price)
 
             watchlist[symbol] = obj
             logger.debug(
