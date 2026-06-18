@@ -10,7 +10,7 @@ from .notification import NotificationChannel
 logger = logging.getLogger(__name__)
 
 TICK_INTERVAL_SECONDS: int = 60
-EXPIRY_MINUTES: int = 90
+EXPIRY_MINUTES: int = 60
 
 
 class MonitoringScheduler:
@@ -47,10 +47,10 @@ class MonitoringScheduler:
 
         logger.debug(f"[TICK #{self._tick_count}] {now_str} — {len(self.watchlist)} stock(s) active")
 
-        # ── Step 1: Expiry check ──────────────────────────────────────────────
+        # ── Step 1: Expiry check (Only for un-entered tracking state) ─────────
         expired = []
         for symbol, obj in self.watchlist.items():
-            if obj.elapsed_minutes() > EXPIRY_MINUTES:
+            if obj.status == "TRACKING" and obj.elapsed_minutes() > EXPIRY_MINUTES:
                 logger.debug(f"[EXPIRED] {symbol} elapsed={obj.elapsed_minutes():.1f}m")
                 expired.append(symbol)
 
@@ -79,31 +79,54 @@ class MonitoringScheduler:
                 logger.debug(f"[SKIP] {symbol} — price unavailable this tick")
                 continue
 
-            in_zone = obj.entry_plan.buy_zone.min <= current_price <= obj.entry_plan.buy_zone.max
-            status_icon = "✅" if in_zone else "⏳"
+            # Phase A: Waiting for entry
+            if obj.status == "TRACKING":
+                in_zone = obj.entry_plan.buy_zone.min <= current_price <= obj.entry_plan.buy_zone.max
+                status_icon = "✅" if in_zone else "⏳"
 
-            logger.debug(
-                f"{status_icon} {symbol:<22} ₹{current_price:<10}  "
-                f"zone=₹{obj.entry_plan.buy_zone.min}→₹{obj.entry_plan.buy_zone.max}  "
-                f"{'IN ZONE' if in_zone else 'outside'}"
-            )
-
-            if in_zone:
                 logger.debug(
-                    f"[ZONE HIT] {obj.symbol} — ₹{current_price} is inside "
-                    f"₹{obj.entry_plan.buy_zone.min}→₹{obj.entry_plan.buy_zone.max}"
+                    f"{status_icon} {symbol:<22} ₹{current_price:<10}  "
+                    f"zone=₹{obj.entry_plan.buy_zone.min}→₹{obj.entry_plan.buy_zone.max}  "
+                    f"{'IN ZONE' if in_zone else 'outside'}"
                 )
-                success = self._broadcast_alert(obj, current_price, "ENTRY")
-                if success:
-                    obj.status = "ALERTED"
-                    obj.alert_sent = True
-                    to_remove.append(symbol)
-                else:
-                    logger.warning(
-                        f"[RETRY PENDING] Alert failed for {obj.symbol} on all channels  "
-                        f"— will retry on next tick if still in zone"
+
+                if in_zone:
+                    logger.debug(
+                        f"[ZONE HIT] {obj.symbol} — ₹{current_price} is inside "
+                        f"₹{obj.entry_plan.buy_zone.min}→₹{obj.entry_plan.buy_zone.max}"
                     )
-        
+                    success = self._broadcast_alert(obj, current_price, "ENTRY")
+                    if success:
+                        obj.status = "ACTIVE"
+                        obj.alert_sent = True
+                        obj.entry_price = current_price
+                        # We DONT remove it because we want to track target/stoploss now
+                    else:
+                        logger.warning(
+                            f"[RETRY PENDING] Alert failed for {obj.symbol} on all channels  "
+                            f"— will retry on next tick if still in zone"
+                        )
+            
+            # Phase B: Entered trade, waiting for target or stoploss
+            elif obj.status == "ACTIVE":
+                # Check Stoploss
+                if current_price <= obj.stoploss_plan.hard_stoploss:
+                    logger.debug(f"[STOP LOSS HIT] {obj.symbol} — ₹{current_price} <= ₹{obj.stoploss_plan.hard_stoploss}")
+                    success = self._broadcast_alert(obj, current_price, "STOPLOSS")
+                    if success:
+                        obj.status = "STOPLOSS_HIT"
+                        to_remove.append(symbol)
+                        
+                # Check Target 1
+                elif current_price >= obj.target_plan.target_1:
+                    logger.debug(f"[TARGET 1 HIT] {obj.symbol} — ₹{current_price} >= ₹{obj.target_plan.target_1}")
+                    success = self._broadcast_alert(obj, current_price, "TARGET")
+                    if success:
+                        obj.status = "TARGET_HIT"
+                        to_remove.append(symbol)
+                else:
+                    logger.debug(f"🔵 {symbol:<22} ₹{current_price:<10}  ACTIVE (SL: ₹{obj.stoploss_plan.hard_stoploss}, T1: ₹{obj.target_plan.target_1})")
+
         for symbol in to_remove:
             del self.watchlist[symbol]
 
