@@ -19,7 +19,7 @@ from core.logger import get_logger
 
 logger = get_logger("usage_tracker", console_output=False)
 
-LOG_BASE            = Path("logs/usage_tracker")
+LOG_BASE            = Path("logs/system_logs/usage_tracker")
 DAILY_REQUEST_LIMIT = 500
 
 

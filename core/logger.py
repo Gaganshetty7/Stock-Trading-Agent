@@ -62,7 +62,7 @@ def get_logger(
             logger.addHandler(handler)
 
 
-            logger.addHandler(_file_handler)
+        logger.addHandler(_file_handler)
 
         # ── Dedicated log file (optional) ─────────────────────────────────
         if log_file:

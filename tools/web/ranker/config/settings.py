@@ -8,7 +8,7 @@ load_dotenv()
 NEWS_RANKER_MODEL = os.getenv("NEWS_RANKER_MODEL")
 
 # -- Orchestration Parameters --
-RANKING_BATCH_SIZE = 10
+RANKING_BATCH_SIZE = 5
 
 RANKING_CONCURRENCY = 1
 
@@ -30,9 +30,5 @@ MARKET_CLOSED_MULTIPLIER = 0.85  # Penalty if outside IST trading hours
 STALE_DECAY_MULTIPLIER = 0.70    # Penalty if news is > 3h old
 STALE_THRESHOLD_MINS = 180       # 3 hours
 
-# ── API Key Management ────────────────────────────────────────────────────────
-# Single key for ranking - friend's key, must be protected
-NEWS_RANKER_API_KEY = os.getenv("NEWS_RANKER_API_KEY", "")
-if not NEWS_RANKER_API_KEY:
-    raise ValueError("NEWS_RANKER_API_KEY not found in .env — add it there, never hardcode it")
+
 

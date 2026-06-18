@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 
 from core.llm import get_llm
 from usage_tracker.wrapper import AutoTrackingLLMWrapper
+from config.settings import NEWS_RANKER_API_KEY, NEWS_RANKER_LLM_PROVIDER
 from ..config.settings import (
-    NEWS_RANKER_API_KEY,
     NEWS_RANKER_MODEL,
     RANKING_TIMEOUT,
     RANKING_BACKOFF_BASE,
@@ -23,7 +23,7 @@ from .prompts import RANK_PROMPT
 # LLM INIT
 # -----------------------------
 _raw_llm = get_llm(
-    provider="gemini",
+    provider=NEWS_RANKER_LLM_PROVIDER,
     model=NEWS_RANKER_MODEL,
     temperature=0,
     api_key=NEWS_RANKER_API_KEY,

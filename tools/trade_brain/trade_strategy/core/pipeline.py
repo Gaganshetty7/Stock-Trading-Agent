@@ -67,7 +67,7 @@ async def execute_trade_brain_pipeline(technical_data: Dict) -> str:
 
         final_results[ticker] = plan_dict
     output_filepath = await write_json(
-        filename_prefix="trade_strategy/plan",
+        filename_prefix="TradeBrainAgent/trade_strategy/plan",
         data=final_results,
         overwrite=False
     )
