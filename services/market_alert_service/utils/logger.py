@@ -23,7 +23,7 @@ def setup_logger() -> logging.Logger:
 
     # ── Full service file log (DEBUG and above) ──────────────────────────────
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = f"logs/bz_alert_{timestamp}.log"
+    log_file = f"logs/market_alert_{timestamp}.log"
     file_fh = logging.FileHandler(log_file)
     file_fh.setFormatter(fmt)
     file_fh.setLevel(logging.DEBUG)
@@ -33,5 +33,6 @@ def setup_logger() -> logging.Logger:
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("requests").setLevel(logging.WARNING)
     logging.getLogger("yfinance").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
     return root

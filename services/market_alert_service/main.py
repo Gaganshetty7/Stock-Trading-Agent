@@ -1,24 +1,34 @@
 """
-Buy Zone Alert Service — Entry Point
+Market Alert Service — Entry Point
 =====================================
 Usage:
-    python main.py
+    python -m services.market_alert_service.main
 
 Environment variables (set in .env):
     TELEGRAM_BOT_TOKEN   — from @BotFather
     TELEGRAM_CHAT_ID     — your personal or group chat ID
+    EMAIL_SENDER         — sending email
+    EMAIL_PASSWORD       — app password
+    EMAIL_RECEIVER       — receiving email
+    ENABLE_EMAIL_ALERTS  — "True" or "False"
+    ENABLE_TELEGRAM_ALERTS — "True" or "False"
 """
 
 import glob
 import logging
 import os
 import sys
+import asyncio
 
 from dotenv import load_dotenv
 
 from .core.scheduler import MonitoringScheduler
 from .core.plan_loader import load_plan
 from .utils.logger import setup_logger
+from .config.settings import settings
+
+from .channels.telegram_alert_service.service import TelegramChannel
+from .channels.email_alert_service.service import EmailChannel
 
 
 def find_latest_plan() -> str:
@@ -26,7 +36,7 @@ def find_latest_plan() -> str:
     Auto-discover the most recent plan file from the outputs directory.
     Files are named plan_YYYYMMDD_HHMMSS.json so alphabetical == chronological.
     """
-    # Assuming main.py is run from trading-agent/services/buy_zone_alert_service
+    # Assuming main.py is run from trading-agent/services/market_alert_service
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     plans_dir = os.path.join(base_dir, "outputs", "TradeBrainAgent", "trade_strategy")
     
@@ -46,6 +56,20 @@ def main() -> None:
     setup_logger()
 
     logger = logging.getLogger(__name__)
+
+    # ── Register active channels ────────────────────────────────────────────────
+    active_channels = []
+    
+    if settings.ENABLE_TELEGRAM_ALERTS:
+        logger.info("[MAIN] Telegram alerts enabled.")
+        active_channels.append(TelegramChannel())
+        
+    if settings.ENABLE_EMAIL_ALERTS:
+        logger.info("[MAIN] Email alerts enabled.")
+        active_channels.append(EmailChannel())
+
+    if not active_channels:
+        logger.warning("[MAIN] No alert channels enabled. Service will fetch data but won't send notifications.")
 
     # ── Resolve plan path ─────────────────────────────────────────────────────
     try:
@@ -70,9 +94,9 @@ def main() -> None:
 
     # ── Run ───────────────────────────────────────────────────────────────────
     try:
-        scheduler = MonitoringScheduler(watchlist_data)
+        scheduler = MonitoringScheduler(watchlist_data, active_channels)
         logger.info("[MAIN] Service startup initialized.")
-        scheduler.run()
+        asyncio.run(scheduler.run())
     except KeyboardInterrupt:
         logger.info("\n[MAIN] Interrupted by user — shutting down.")
         logger.info(f"[MAIN] Final watchlist state: {len(scheduler.watchlist)} active tracking.")
