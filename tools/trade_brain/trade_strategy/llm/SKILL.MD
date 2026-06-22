@@ -9,6 +9,38 @@ You are an institutional intraday trader analyzing a batch of NSE stocks. This p
 
 ---
 
+## STEP 0 — READ THE BROADER MARKET
+
+You will receive Nifty 50 technical data before the stock data.
+Read it first. Note the Nifty 50 trend, RSI_5m, VWAP position,
+and MA alignment (compute NIFTY_MA_SCORE the same way you do
+for individual stocks).
+
+This is context, not a gate. You are not generating a plan for
+the index. You are forming a view on whether the broader market
+is helping or hurting the individual stock setups you will analyze.
+
+Carry your market read forward — you will reference it naturally
+in your trade thesis and when calibrating confidence.
+
+### How to use the market context
+
+- **Tailwind:** When Nifty and the stock trend agree (both bullish or
+  both recovering), the setup has a higher probability of working.
+  Reflect this in your thesis and confidence.
+- **Headwind:** When Nifty is weak but the stock is strong, that stock
+  is showing relative strength — which can be a positive signal on its
+  own. Don't penalize it automatically. Note the divergence and let the
+  stock's own indicators drive the plan.
+- **Broad weakness:** When both Nifty and the stock are weak, be more
+  skeptical of long setups. The stock has nothing carrying it.
+- **Short watch guard:** If Nifty is clearly bullish, do not classify
+  a stock as SHORT_WATCH unless it has broken below S2 with strong
+  volume. Shorting individual names against a rising market is low-
+  probability.
+
+---
+
 ## STEP 1 — LIQUIDITY GATE. Run this first. No exceptions.
 
 `volume_strength_20m` = last_candle_volume / average_volume_20m. Pre-calculated in the data.
@@ -378,6 +410,13 @@ RSI_1m fires constantly. It resets every 60 seconds. It will trigger your confir
 A stop distance below 0.3% on any stock gets hit by normal candle wicks. It isn't a stop — it's a guaranteed loss.
 → Minimum stop distance 0.3%. If the structure doesn't give you room, the trade doesn't exist.
 
+**Ignoring the broader market context.**
+You receive Nifty 50 data for a reason. If the market is down 1% from
+VWAP with RSI below 35, mention it in your thesis. If you're writing a
+bullish plan while the market is clearly under pressure, explain why the
+stock-specific setup overrides the headwind. Don't pretend the context
+doesn't exist.
+
 ---
 
 ## PERCENTAGE-DISTANCE METRICS — HOW TO USE THEM
@@ -428,3 +467,10 @@ A reminder of what each field in the batch JSON is actually telling you:
 | `average_volume_20m` | Average volume of previous 20 completed 1-minute candles | Baseline for interpreting last_candle_volume |
 | `volume_strength_20m` | last_candle_volume / average_volume_20m | Pre-calculated participation ratio. Your liquidity gate number. |
 | `MA20_1m / MA20_5m / MA20_15m` | 20-period MA across three timeframes | Combine to compute MA_SCORE. MA20_15m is also an overhead resistance filter. |
+
+### Nifty 50 Context Fields
+
+The Nifty 50 data uses the same field names as individual stocks
+but is provided separately as market context. You are NOT generating
+a trade plan for it. Use the trend, RSI_5m, VWAP position, and MA
+values to inform your broader market read (STEP 0).

@@ -66,6 +66,12 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
 
     # Filter out unresolved symbols
     resolvable_tickers = [t for t in clean_tickers if symbol_mapping.get(t)]
+    
+    # Ensure Nifty 50 is always analyzed for market context
+    if "NIFTY 50" not in resolvable_tickers:
+        resolvable_tickers.append("NIFTY 50")
+        symbol_mapping["NIFTY 50"] = "NSE_INDEX|Nifty 50"
+
     if not resolvable_tickers:
         logger.error(f"Could not resolve any symbols from {clean_tickers}")
         return {t: {"stock": t, "status": "error", "message": "Symbol not found"} 
@@ -78,8 +84,12 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
     upstox_data, ltp_data = await asyncio.gather(upstox_data_task, ltp_data_task)
 
     # Process each ticker
+    all_tickers = list(clean_tickers)
+    if "NIFTY 50" not in all_tickers:
+        all_tickers.append("NIFTY 50")
+
     results = {}
-    for ticker in clean_tickers:
+    for ticker in all_tickers:
         output_ticker = ticker
         
         try:
@@ -122,7 +132,18 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
                 "timestamp": datetime.now().isoformat()
             }
 
-    return results
+    structured_results = {
+        "market_context": {},
+        "tickers": {}
+    }
+    
+    for ticker, ticker_data in results.items():
+        if ticker == "NIFTY 50":
+            structured_results["market_context"]["NIFTY_50"] = ticker_data
+        else:
+            structured_results["tickers"][ticker] = ticker_data
+
+    return structured_results
 
 
 async def fetch_and_save_technicals(tickers: list[str]) -> dict:
@@ -149,5 +170,5 @@ async def fetch_and_save_technicals(tickers: list[str]) -> dict:
         "status": "success",
         "message": f"Successfully fetched technicals for {len(tickers)} tickers and saved to disk.",
         "file_path": filepath,
-        "tickers_processed": list(data.keys())
+        "tickers_processed": list(data["tickers"].keys())
     }

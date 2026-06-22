@@ -26,7 +26,7 @@ with open(skill_path, "r", encoding="utf-8") as f:
     TRADE_BRAIN_SYSTEM_PROMPT = f.read()
 
 
-async def execute_trade_brain_pipeline(technical_data: Dict) -> str:
+async def execute_trade_brain_pipeline(market_context: Dict, technical_data: Dict) -> str:
     """
     Iterates through technical data, invoking the LLM with strict TradePlan
     schema enforcement for each ticker, and saves the final result.
@@ -44,9 +44,15 @@ async def execute_trade_brain_pipeline(technical_data: Dict) -> str:
 
     for ticker, data in technical_data.items():
         logger.info(f"Processing ticker: {ticker}")
+        prompt_content = (
+            f"--- GLOBAL MARKET CONTEXT (NIFTY 50) ---\n"
+            f"{json.dumps(market_context, indent=2)}\n\n"
+            f"--- STOCK TO ANALYZE: {ticker} ---\n"
+            f"{json.dumps(data, indent=2)}"
+        )
         messages = [
             SystemMessage(content=TRADE_BRAIN_SYSTEM_PROMPT),
-            HumanMessage(content=f"Technical data for {ticker}:\n{json.dumps(data, indent=2)}")
+            HumanMessage(content=prompt_content)
         ]
 
         plan_dict = None

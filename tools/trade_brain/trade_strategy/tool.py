@@ -23,7 +23,7 @@ async def trade_strategy(file_path: Optional[str] = None) -> Dict:
     
     # 1. Load the payload
     try:
-        technical_data, source_file = load_technicals_payload(file_path)
+        market_context, technical_data, source_file = load_technicals_payload(file_path)
         logger.info(f"Loaded payload from: {source_file}")
     except Exception as e:
         logger.error(f"Failed to load payload: {str(e)}")
@@ -32,7 +32,7 @@ async def trade_strategy(file_path: Optional[str] = None) -> Dict:
     # 2. Execute pipeline
     try:
         logger.info(f"Executing pipeline for {len(technical_data)} tickers...")
-        output_file = await execute_trade_brain_pipeline(technical_data)
+        output_file = await execute_trade_brain_pipeline(market_context, technical_data)
         logger.info(f"Pipeline execution complete. Results saved to: {output_file}")
         
         return {
