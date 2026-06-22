@@ -83,7 +83,7 @@ class UpstoxClient:
                         f"{to_date.isoformat()}/{from_date.isoformat()}"
                     )
 
-                logger.debug(f"Fetching {instrument_key} [{interval}m] from {from_date} to {to_date}")
+                logger.debug(f"Fetching {instrument_key} [{interval}] from {from_date} to {to_date}")
 
                 # Respect rate limit: 50 req/sec
                 await self._rate_limit()
@@ -102,12 +102,12 @@ class UpstoxClient:
                 if not candles:
                     if attempt < max_retries:
                         logger.info(
-                            f"No candles for {instrument_key} [{interval}m] with "
+                            f"No candles for {instrument_key} [{interval}] with "
                             f"days_back={current_days_back}, expanding to {current_days_back + 1}"
                         )
                         continue
                     logger.warning(
-                        f"No candles returned for {instrument_key} [{interval}m] "
+                        f"No candles returned for {instrument_key} [{interval}] "
                         f"after {max_retries + 1} attempts (days_back reached {current_days_back})"
                     )
                     return None
@@ -257,7 +257,7 @@ async def fetch_upstox_batch(
                 results[instrument_key] = {}
             results[instrument_key][interval] = df
         except Exception as e:
-            logger.error(f"Error fetching {instrument_key} [{interval}m]: {e}")
+            logger.error(f"Error fetching {instrument_key} [{interval}]: {e}")
             if instrument_key not in results:
                 results[instrument_key] = {}
             results[instrument_key][interval] = None
