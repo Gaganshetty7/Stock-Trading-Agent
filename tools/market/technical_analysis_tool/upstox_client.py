@@ -50,7 +50,7 @@ class UpstoxClient:
 
         Args:
             instrument_key: Upstox format, e.g., "NSE_EQ|INE002A01018"
-            interval: "1", "5", or "15" (minutes)
+            interval: "1m", "5m", "15m", or "1d"
             days_back: How many days to look back (max 30 for intraday)
 
         Returns:
@@ -62,11 +62,17 @@ class UpstoxClient:
             to_date = datetime.now(IST).date()
             from_date = to_date - timedelta(days=days_back)
 
-            # Build URL (Upstox maps Arg1 to toDate and Arg2 to fromDate)
-            url = (
-                f"{self.base_url}/historical-candle/{instrument_key}/minutes/{interval}/"
-                f"{to_date.isoformat()}/{from_date.isoformat()}"
-            )
+            if interval == "1d":
+                url = (
+                    f"{self.base_url}/historical-candle/{instrument_key}/days/1/"
+                    f"{to_date.isoformat()}/{from_date.isoformat()}"
+                )
+            else:
+                upstox_interval = interval.replace("m", "")
+                url = (
+                    f"{self.base_url}/historical-candle/{instrument_key}/minutes/{upstox_interval}/"
+                    f"{to_date.isoformat()}/{from_date.isoformat()}"
+                )
 
             logger.debug(f"Fetching {instrument_key} [{interval}m] from {from_date} to {to_date}")
 
@@ -190,20 +196,21 @@ async def fetch_upstox_batch(
 
     Args:
         instrument_keys: List of Upstox instrument keys, e.g., ["NSE_EQ|INE002A01018", ...]
-        intervals: List of intervals, e.g., ["1", "5", "15"]
+        intervals: List of intervals, e.g., ["1m", "5m", "15m", "1d"]
 
     Returns:
         dict: {
             "instrument_key": {
-                "1": DataFrame,  # 1-minute data
-                "5": DataFrame,  # 5-minute data
-                "15": DataFrame, # 15-minute data
+                "1m": DataFrame,  # 1-minute data
+                "5m": DataFrame,  # 5-minute data
+                "15m": DataFrame, # 15-minute data
+                "1d": DataFrame,  # Daily data
             },
             ...
         }
     """
     if intervals is None:
-        intervals = ["1", "5", "15"]
+        intervals = ["1m", "5m", "15m", "1d"]
 
     client = UpstoxClient(UPSTOX_TOKEN, UPSTOX_API_BASE_URL)
     results = {}
@@ -214,7 +221,12 @@ async def fetch_upstox_batch(
         for interval in intervals:
             # Match yfinance lookback: 1m → 1 day, 5m → 5 days, 15m → 5 days
             # We use days_back=1 for 1m to ensure we have enough data even at market open
-            days_back = 1 if interval == "1" else 5
+            if interval == "1d":
+                days_back = 10
+            elif interval == "1m":
+                days_back = 1
+            else:
+                days_back = 5
             tasks.append((instrument_key, interval, client.fetch_candles(instrument_key, interval, days_back)))
 
     # Execute all tasks concurrently (respects per-request rate limiting)

@@ -2,7 +2,7 @@ import asyncio
 import json
 import time
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from core.llm import get_llm
 from usage_tracker.wrapper import AutoTrackingLLMWrapper
@@ -190,7 +190,7 @@ async def run_batch(batch_tickers, batch_index, mapped, metrics):
     # -------------------------
     prompt = RANK_PROMPT.replace(
         "{current_time}",
-        datetime.now(timezone.utc).strftime("%I:%M %p UTC"),
+        datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%I:%M %p IST"),
     ).replace(
         "{payload}",
         json.dumps(llm_payload, indent=2),

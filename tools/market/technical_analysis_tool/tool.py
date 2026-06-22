@@ -71,9 +71,9 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
         return {t: {"stock": t, "status": "error", "message": "Symbol not found"} 
                 for t in clean_tickers}
 
-    # Fetch candles and LTP from Upstox (1m, 5m, 15m)
+    # Fetch candles and LTP from Upstox (1m, 5m, 15m, 1d)
     instrument_keys = [symbol_mapping[t] for t in resolvable_tickers]
-    upstox_data_task = asyncio.create_task(fetch_upstox_batch(instrument_keys, intervals=["1", "5", "15"]))
+    upstox_data_task = asyncio.create_task(fetch_upstox_batch(instrument_keys, intervals=["1m", "5m", "15m", "1d"]))
     ltp_data_task = asyncio.create_task(fetch_ltp_batch(instrument_keys))
     upstox_data, ltp_data = await asyncio.gather(upstox_data_task, ltp_data_task)
 
@@ -95,12 +95,13 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
 
             # Get DataFrames for each interval
             ticker_data = upstox_data.get(instrument_key, {})
-            data_1m = ticker_data.get("1")
-            data_5m = ticker_data.get("5")
-            data_15m = ticker_data.get("15")
+            data_1m = ticker_data.get("1m")
+            data_5m = ticker_data.get("5m")
+            data_15m = ticker_data.get("15m")
+            data_1d = ticker_data.get("1d")
 
             # Validate data availability
-            if data_1m is None or data_5m is None or data_15m is None:
+            if data_1m is None or data_5m is None or data_15m is None or data_1d is None:
                 results[output_ticker] = {
                     "stock": output_ticker,
                     "status": "error",
@@ -111,7 +112,7 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
 
             # Pass to indicator processor
             ltp = ltp_data.get(instrument_key)
-            results[output_ticker] = process_stock(output_ticker, data_1m, data_5m, data_15m, ltp=ltp)
+            results[output_ticker] = process_stock(output_ticker, data_1m, data_5m, data_15m, data_1d, ltp=ltp)
 
         except Exception as e:
             results[output_ticker] = {
