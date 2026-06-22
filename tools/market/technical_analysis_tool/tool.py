@@ -66,20 +66,30 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
 
     # Filter out unresolved symbols
     resolvable_tickers = [t for t in clean_tickers if symbol_mapping.get(t)]
+    
+    # Ensure Nifty 50 is always analyzed for market context
+    if "NIFTY 50" not in resolvable_tickers:
+        resolvable_tickers.append("NIFTY 50")
+        symbol_mapping["NIFTY 50"] = "NSE_INDEX|Nifty 50"
+
     if not resolvable_tickers:
         logger.error(f"Could not resolve any symbols from {clean_tickers}")
         return {t: {"stock": t, "status": "error", "message": "Symbol not found"} 
                 for t in clean_tickers}
 
-    # Fetch candles and LTP from Upstox (1m, 5m, 15m)
+    # Fetch candles and LTP from Upstox (1m, 5m, 15m, 1d)
     instrument_keys = [symbol_mapping[t] for t in resolvable_tickers]
-    upstox_data_task = asyncio.create_task(fetch_upstox_batch(instrument_keys, intervals=["1", "5", "15"]))
+    upstox_data_task = asyncio.create_task(fetch_upstox_batch(instrument_keys, intervals=["1m", "5m", "15m", "1d"]))
     ltp_data_task = asyncio.create_task(fetch_ltp_batch(instrument_keys))
     upstox_data, ltp_data = await asyncio.gather(upstox_data_task, ltp_data_task)
 
     # Process each ticker
+    all_tickers = list(clean_tickers)
+    if "NIFTY 50" not in all_tickers:
+        all_tickers.append("NIFTY 50")
+
     results = {}
-    for ticker in clean_tickers:
+    for ticker in all_tickers:
         output_ticker = ticker
         
         try:
@@ -95,12 +105,13 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
 
             # Get DataFrames for each interval
             ticker_data = upstox_data.get(instrument_key, {})
-            data_1m = ticker_data.get("1")
-            data_5m = ticker_data.get("5")
-            data_15m = ticker_data.get("15")
+            data_1m = ticker_data.get("1m")
+            data_5m = ticker_data.get("5m")
+            data_15m = ticker_data.get("15m")
+            data_1d = ticker_data.get("1d")
 
             # Validate data availability
-            if data_1m is None or data_5m is None or data_15m is None:
+            if data_1m is None or data_5m is None or data_15m is None or data_1d is None:
                 results[output_ticker] = {
                     "stock": output_ticker,
                     "status": "error",
@@ -111,7 +122,7 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
 
             # Pass to indicator processor
             ltp = ltp_data.get(instrument_key)
-            results[output_ticker] = process_stock(output_ticker, data_1m, data_5m, data_15m, ltp=ltp)
+            results[output_ticker] = process_stock(output_ticker, data_1m, data_5m, data_15m, data_1d, ltp=ltp)
 
         except Exception as e:
             results[output_ticker] = {
@@ -121,7 +132,18 @@ async def run_technical_analysis(tickers: list[str]) -> dict:
                 "timestamp": datetime.now().isoformat()
             }
 
-    return results
+    structured_results = {
+        "market_context": {},
+        "tickers": {}
+    }
+    
+    for ticker, ticker_data in results.items():
+        if ticker == "NIFTY 50":
+            structured_results["market_context"]["NIFTY_50"] = ticker_data
+        else:
+            structured_results["tickers"][ticker] = ticker_data
+
+    return structured_results
 
 
 async def fetch_and_save_technicals(tickers: list[str]) -> dict:
@@ -148,5 +170,5 @@ async def fetch_and_save_technicals(tickers: list[str]) -> dict:
         "status": "success",
         "message": f"Successfully fetched technicals for {len(tickers)} tickers and saved to disk.",
         "file_path": filepath,
-        "tickers_processed": list(data.keys())
+        "tickers_processed": list(data["tickers"].keys())
     }

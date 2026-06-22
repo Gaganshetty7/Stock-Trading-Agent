@@ -6,7 +6,7 @@ from core.logger import get_logger
 
 logger = get_logger("TradeStrategy")
 
-def load_technicals_payload(file_path: Optional[str] = None) -> Tuple[Dict, str]:
+def load_technicals_payload(file_path: Optional[str] = None) -> Tuple[Dict, Dict, str]:
     """
     Locates and loads the JSON technical analysis payload.
     If no file_path is given, defaults to the latest analysis_batch_*.json
@@ -25,4 +25,7 @@ def load_technicals_payload(file_path: Optional[str] = None) -> Tuple[Dict, str]
     with open(file_path, "r", encoding="utf-8") as f:
         data = json.load(f)
         
-    return data, file_path
+    if "market_context" in data and "tickers" in data:
+        return data["market_context"], data["tickers"], file_path
+    else:
+        return {}, data, file_path

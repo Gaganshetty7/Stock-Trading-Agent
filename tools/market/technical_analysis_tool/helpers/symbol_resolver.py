@@ -12,14 +12,13 @@ Refreshes cache daily (Upstox updates ~6 AM IST).
 
 import json
 import gzip
-import logging
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
 
-from config.settings import OUTPUTS_DIR
+from tools.market.technical_analysis_tool.helpers.settings import SYMBOL_RESOLVER_SEGMENT
 from core.logger import get_logger
 
 logger = get_logger("symbol_resolver")
@@ -94,15 +93,17 @@ class SymbolResolver:
             with open(CACHE_FILE, "r", encoding="utf-8") as f:
                 self.instruments_data = json.load(f)
 
-            # Build lookup dict
+            # Build lookup dict (avoids collisions using configured segment)
             self.lookup_dict = {}
             for record in self.instruments_data:
+                if record.get("segment") != SYMBOL_RESOLVER_SEGMENT:
+                    continue
                 trading_symbol = record.get("trading_symbol", "")
                 instrument_key = record.get("instrument_key", "")
                 if trading_symbol and instrument_key:
                     self.lookup_dict[trading_symbol] = instrument_key
 
-            logger.info(f"Loaded {len(self.lookup_dict)} instruments from cache")
+            logger.info(f"Loaded {len(self.lookup_dict)} {SYMBOL_RESOLVER_SEGMENT} instruments from cache")
             return True
 
         except Exception as e:
@@ -130,15 +131,17 @@ class SymbolResolver:
                 logger.error("Unexpected JSON structure from Upstox")
                 return False
 
-            # Build lookup dict
+            # Build lookup dict (avoids collisions using configured segment)
             self.lookup_dict = {}
             for record in self.instruments_data:
+                if record.get("segment") != SYMBOL_RESOLVER_SEGMENT:
+                    continue
                 trading_symbol = record.get("trading_symbol", "")
                 instrument_key = record.get("instrument_key", "")
                 if trading_symbol and instrument_key:
                     self.lookup_dict[trading_symbol] = instrument_key
 
-            logger.info(f"Built lookup dict with {len(self.lookup_dict)} symbols")
+            logger.info(f"Built lookup dict with {len(self.lookup_dict)} {SYMBOL_RESOLVER_SEGMENT} symbols")
 
             # Save to cache
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
