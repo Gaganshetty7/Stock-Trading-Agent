@@ -44,73 +44,93 @@ class UpstoxClient:
         instrument_key: str,
         interval: str,  # "1", "5", "15"
         days_back: int = 30,
+        max_retries: int = 3,
     ) -> Optional[pd.DataFrame]:
         """
         Fetch candlestick data for a single instrument.
+
+        If no candles are returned (e.g. weekend, holiday), the method
+        automatically increments `days_back` by 1 and retries, up to
+        `max_retries` additional attempts.  HTTP errors and other
+        exceptions bail out immediately without retrying.
 
         Args:
             instrument_key: Upstox format, e.g., "NSE_EQ|INE002A01018"
             interval: "1", "5", or "15" (minutes)
             days_back: How many days to look back (max 30 for intraday)
+            max_retries: Extra attempts with incremented days_back on empty results
 
         Returns:
             pandas DataFrame with columns: Open, High, Low, Close, Volume
             OR None if request fails
         """
-        try:
-            # Calculate date range
-            to_date = datetime.now(IST).date()
-            from_date = to_date - timedelta(days=days_back)
+        for attempt in range(max_retries + 1):
+            current_days_back = days_back + attempt
+            try:
+                # Calculate date range
+                to_date = datetime.now(IST).date()
+                from_date = to_date - timedelta(days=current_days_back)
 
-            # Build URL (Upstox maps Arg1 to toDate and Arg2 to fromDate)
-            url = (
-                f"{self.base_url}/historical-candle/{instrument_key}/minutes/{interval}/"
-                f"{to_date.isoformat()}/{from_date.isoformat()}"
-            )
+                # Build URL (Upstox maps Arg1 to toDate and Arg2 to fromDate)
+                url = (
+                    f"{self.base_url}/historical-candle/{instrument_key}/minutes/{interval}/"
+                    f"{to_date.isoformat()}/{from_date.isoformat()}"
+                )
 
-            logger.debug(f"Fetching {instrument_key} [{interval}m] from {from_date} to {to_date}")
+                logger.debug(f"Fetching {instrument_key} [{interval}m] from {from_date} to {to_date}")
 
-            # Respect rate limit: 50 req/sec
-            await self._rate_limit()
+                # Respect rate limit: 50 req/sec
+                await self._rate_limit()
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(url, headers=self.headers)
-                response.raise_for_status()
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.get(url, headers=self.headers)
+                    response.raise_for_status()
 
-            data = response.json()
+                data = response.json()
 
-            if data.get("status") != "success":
-                logger.warning(f"Upstox error for {instrument_key}: {data.get('error', 'Unknown error')}")
+                if data.get("status") != "success":
+                    logger.warning(f"Upstox error for {instrument_key}: {data.get('error', 'Unknown error')}")
+                    return None
+
+                candles = data.get("data", {}).get("candles", [])
+                if not candles:
+                    if attempt < max_retries:
+                        logger.info(
+                            f"No candles for {instrument_key} [{interval}m] with "
+                            f"days_back={current_days_back}, expanding to {current_days_back + 1}"
+                        )
+                        continue
+                    logger.warning(
+                        f"No candles returned for {instrument_key} [{interval}m] "
+                        f"after {max_retries + 1} attempts (days_back reached {current_days_back})"
+                    )
+                    return None
+
+                # Transform array format to DataFrame
+                df = self._transform_to_dataframe(candles)
+                logger.debug(f"Successfully fetched {len(df)} candles for {instrument_key}")
+                return df
+
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    logger.error(f"Authentication failed: Check UPSTOX_TOKEN. {e}")
+                elif e.response.status_code == 404:
+                    logger.warning(f"Instrument not found: {instrument_key}")
+                elif e.response.status_code == 429:
+                    logger.warning(f"Rate limit exceeded. Consider reducing request rate.")
+                else:
+                    logger.error(f"HTTP error {e.response.status_code}: {e}")
                 return None
 
-            candles = data.get("data", {}).get("candles", [])
-            if not candles:
-                logger.warning(f"No candles returned for {instrument_key}")
+            except asyncio.TimeoutError:
+                logger.error(f"Request timeout for {instrument_key}")
                 return None
 
-            # Transform array format to DataFrame
-            df = self._transform_to_dataframe(candles)
-            logger.debug(f"Successfully fetched {len(df)} candles for {instrument_key}")
-            return df
+            except Exception as e:
+                logger.error(f"Unexpected error fetching {instrument_key}: {e}")
+                return None
 
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                logger.error(f"Authentication failed: Check UPSTOX_TOKEN. {e}")
-            elif e.response.status_code == 404:
-                logger.warning(f"Instrument not found: {instrument_key}")
-            elif e.response.status_code == 429:
-                logger.warning(f"Rate limit exceeded. Consider reducing request rate.")
-            else:
-                logger.error(f"HTTP error {e.response.status_code}: {e}")
-            return None
-
-        except asyncio.TimeoutError:
-            logger.error(f"Request timeout for {instrument_key}")
-            return None
-
-        except Exception as e:
-            logger.error(f"Unexpected error fetching {instrument_key}: {e}")
-            return None
+        return None
 
     async def fetch_ltp(self, instrument_key: str) -> Optional[float]:
         """Fetch the latest LTP for a single instrument key."""

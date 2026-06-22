@@ -7,7 +7,7 @@ from typing import Optional, Dict, List
 
 from config.settings import OUTPUTS_DIR
 from tools.storage.file_writer import write_json
-from tools.web.selector.settings import TOP_N, ALLOWED_TRENDS, MIN_CONFIDENCE, MIN_IMPACT, STEP, COMBINED_SCORE_WEIGHTS
+from tools.web.selector.settings import TOP_N_ARTICLES, ALLOWED_TRENDS, MIN_CONFIDENCE, MIN_IMPACT, STEP, COMBINED_SCORE_WEIGHTS
 from core.logger import get_logger
 
 logger = get_logger("selector")
@@ -70,7 +70,7 @@ def _load_signals(signals_file: Optional[str] = None) -> Dict:
 
 # ─────────────── SELECTION CORE ───────────────
 
-def _dynamic_threshold_select(signals: Dict, top_n: int = TOP_N) -> Dict:
+def _dynamic_threshold_select(signals: Dict, top_n: int = TOP_N_ARTICLES) -> Dict:
     """
     Progressively expands the candidate pool using tiered thresholds until top_n unique tickers found.
     Combined score is computed ONLY on articles that pass the threshold filter.

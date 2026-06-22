@@ -2,7 +2,7 @@
 # USER CONFIG (EDIT THIS)
 # =========================
 
-TOP_N = 10
+TOP_N_ARTICLES = 10
 
 # YOU DECIDE THIS bullish/bearish/sideways
 ALLOWED_TRENDS = ["bullish"]  
