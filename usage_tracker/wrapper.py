@@ -230,7 +230,4 @@ class AutoTrackingLLMWrapper:
         record.status = "FAILED"
         record.duration_seconds = round(duration, 2)
         
-        # Log to core logger
-        logger.error(f"LLM Call Failed: {self.model} | Duration: {round(duration, 2)}s | Error: {str(exc)}")
-        
         append_call(record)

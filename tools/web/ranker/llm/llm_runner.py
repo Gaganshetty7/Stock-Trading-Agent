@@ -5,7 +5,6 @@ import re
 from datetime import datetime, timezone, timedelta
 
 from core.llm import get_llm
-from usage_tracker.wrapper import AutoTrackingLLMWrapper
 from config.settings import NEWS_RANKER_API_KEY, NEWS_RANKER_LLM_PROVIDER
 from ..config.settings import (
     NEWS_RANKER_MODEL,
@@ -22,13 +21,12 @@ from .prompts import RANK_PROMPT
 # -----------------------------
 # LLM INIT
 # -----------------------------
-_raw_llm = get_llm(
+LLM = get_llm(
     provider=NEWS_RANKER_LLM_PROVIDER,
     model=NEWS_RANKER_MODEL,
     temperature=0,
     api_key=NEWS_RANKER_API_KEY,
 )
-LLM = AutoTrackingLLMWrapper(_raw_llm)
 
 
 # -----------------------------
@@ -108,7 +106,19 @@ async def call_llm(prompt: str, metrics) -> str | None:
 
         except Exception as e:
             metrics.api_calls_made += 1
-            err = str(e)
+            err_type = e.__class__.__name__
+            err_msg = str(e)
+            
+            # Shorten/clean up nested JSON errors if present
+            if len(err_msg) > 200:
+                import re
+                message_match = re.search(r"['\"]message['\"]:\s*['\"]([^'\"]+)['\"]", err_msg)
+                if message_match:
+                    err_msg = message_match.group(1)
+                else:
+                    err_msg = f"{err_msg[:200]}..."
+            
+            err = f"{err_type}: {err_msg}" if err_msg else err_type
 
             # retryable errors
             if any(x in err for x in ["429", "RESOURCE_EXHAUSTED", "503", "UNAVAILABLE"]):
@@ -116,15 +126,15 @@ async def call_llm(prompt: str, metrics) -> str | None:
                     attempt += 1
                     backoff = RANKING_BACKOFF_BASE * (2 ** (attempt - 1))
 
-                    logger.debug(f"[RETRY] attempt={attempt}, sleep={backoff}s")
+                    logger.debug(f"[RETRY] attempt={attempt}, sleep={backoff}s ({err})")
                     await asyncio.sleep(backoff)
                     continue
 
-                logger.error("[LLM ERROR] Max retries exhausted")
+                logger.error(f"[LLM ERROR] Max retries exhausted. Last error: {err}")
                 return None
 
             if "403" in err or "PERMISSION_DENIED" in err:
-                logger.error("[FATAL] Invalid API key")
+                logger.error(f"[FATAL] Invalid API key: {err}")
                 return None
 
             logger.error(f"[LLM ERROR] {err}")
