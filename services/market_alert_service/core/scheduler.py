@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime
 from typing import Dict, List
 
-from ..models.tracking_object import TrackingObject
+from ..models.tracking_object import TrackingObject, TrackingStatus
 from .market_data_service import fetch_prices
 from .notification import NotificationChannel
 
@@ -50,12 +50,12 @@ class MonitoringScheduler:
         # ── Step 1: Expiry check (Only for un-entered tracking state) ─────────
         expired = []
         for symbol, obj in self.watchlist.items():
-            if obj.status == "TRACKING" and obj.elapsed_minutes() > EXPIRY_MINUTES:
+            if obj.status == TrackingStatus.TRACKING and obj.elapsed_minutes() > EXPIRY_MINUTES:
                 logger.debug(f"[EXPIRED] {symbol} elapsed={obj.elapsed_minutes():.1f}m")
                 expired.append(symbol)
 
         for symbol in expired:
-            self.watchlist[symbol].status = "EXPIRED"
+            self.watchlist[symbol].status = TrackingStatus.EXPIRED
             del self.watchlist[symbol]
 
         if not self.watchlist:
@@ -80,7 +80,7 @@ class MonitoringScheduler:
                 continue
 
             # Phase A: Waiting for entry
-            if obj.status == "TRACKING":
+            if obj.status == TrackingStatus.TRACKING:
                 in_zone = obj.entry_plan.buy_zone.min <= current_price <= obj.entry_plan.buy_zone.max
                 status_icon = "✅" if in_zone else "⏳"
 
@@ -97,7 +97,7 @@ class MonitoringScheduler:
                     )
                     success = self._broadcast_alert(obj, current_price, "ENTRY")
                     if success:
-                        obj.status = "ACTIVE"
+                        obj.status = TrackingStatus.ACTIVE
                         obj.alert_sent = True
                         obj.entry_price = current_price
                         # We DONT remove it because we want to track target/stoploss now
@@ -108,13 +108,13 @@ class MonitoringScheduler:
                         )
             
             # Phase B: Entered trade, waiting for target or stoploss
-            elif obj.status == "ACTIVE":
+            elif obj.status == TrackingStatus.ACTIVE:
                 # Check Stoploss
                 if current_price <= obj.stoploss_plan.hard_stoploss:
                     logger.debug(f"[STOP LOSS HIT] {obj.symbol} — ₹{current_price} <= ₹{obj.stoploss_plan.hard_stoploss}")
                     success = self._broadcast_alert(obj, current_price, "STOPLOSS")
                     if success:
-                        obj.status = "STOPLOSS_HIT"
+                        obj.status = TrackingStatus.STOPLOSS_HIT
                         to_remove.append(symbol)
                         
                 # Check Target 1
@@ -122,7 +122,7 @@ class MonitoringScheduler:
                     logger.debug(f"[TARGET 1 HIT] {obj.symbol} — ₹{current_price} >= ₹{obj.target_plan.target_1}")
                     success = self._broadcast_alert(obj, current_price, "TARGET")
                     if success:
-                        obj.status = "TARGET_HIT"
+                        obj.status = TrackingStatus.TARGET_HIT
                         to_remove.append(symbol)
                 else:
                     logger.debug(f"🔵 {symbol:<22} ₹{current_price:<10}  ACTIVE (SL: ₹{obj.stoploss_plan.hard_stoploss}, T1: ₹{obj.target_plan.target_1})")
