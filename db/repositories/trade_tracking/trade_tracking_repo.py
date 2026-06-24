@@ -1,7 +1,15 @@
+from typing import List, Optional
+from datetime import datetime
+import pytz
 from sqlalchemy.orm import Session
-from db.models.trade_tracking import TradeTracking, TrackingStatus
+
+from db.models.trade_tracking import TradeTracking, TrackingStatus, TradeTrackingTxn, TradeEventType
+
+def get_ist_now():
+    return datetime.now(pytz.timezone('Asia/Kolkata'))
 
 class TradeTrackingRepository:
+    # Saves a brand new trade plan to the database.
     def create(self, db: Session, plan_data: dict) -> TradeTracking:
         trade = TradeTracking(
             symbol=plan_data.get('symbol'),
@@ -21,5 +29,81 @@ class TradeTrackingRepository:
             status=TrackingStatus.TRACKING
         )
         db.add(trade)
+        db.flush()
+        return trade
+
+    # Fetches all trades currently in the ACTIVE state.
+    def get_active_trades(self, db: Session) -> List[TradeTracking]:
+        return db.query(TradeTracking).filter(TradeTracking.status == TrackingStatus.ACTIVE).all()
+
+    # Fetches the entire history of trades for a specific stock ticker.
+    def get_trades_by_symbol(self, db: Session, symbol: str) -> List[TradeTracking]:
+        return db.query(TradeTracking).filter(TradeTracking.symbol == symbol).all()
+
+    # Fetches all trades generated since midnight today.
+    def get_trades_created_today(self, db: Session) -> List[TradeTracking]:
+        today_start = get_ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
+        return db.query(TradeTracking).filter(TradeTracking.created_at >= today_start).all()
+
+    # Fetches both pending (TRACKING) and live (ACTIVE) trades so the background scheduler can monitor them.
+    def get_active_and_tracking_trades(self, db: Session) -> List[TradeTracking]:
+        return db.query(TradeTracking).filter(
+            TradeTracking.status.in_([TrackingStatus.TRACKING, TrackingStatus.ACTIVE])
+        ).all()
+
+    # Safely changes a trade's status while automatically saving a permanent record of the change to the transaction ledger.
+    def update_trade_status(
+        self, 
+        db: Session, 
+        trade_id: int, 
+        new_status: TrackingStatus, 
+        event_type: TradeEventType, 
+        event_message: str = None, 
+        event_details: dict = None, 
+        telegram_message_id: str = None, 
+        alert_sent: bool = False
+    ) -> TradeTracking:
+        
+        trade = db.query(TradeTracking).with_for_update().filter(TradeTracking.id == trade_id).first()
+        if not trade:
+            raise ValueError(f"TradeTracking with id {trade_id} not found.")
+
+        old_status = trade.status
+        trade.status = new_status
+        db.flush()
+
+        txn = TradeTrackingTxn(
+            trade_tracking_id=trade.id,
+            event_type=event_type,
+            old_status=old_status,
+            new_status=new_status,
+            message=event_message,
+            telegram_message_id=telegram_message_id,
+            alert_sent=alert_sent,
+            details=event_details
+        )
+        db.add(txn)
+        
+        return trade
+
+    # A shortcut method that specifically marks a trade as BUY_ZONE_HIT and logs the Telegram alert.
+    def mark_buy_zone_hit(self, db: Session, trade_id: int, message_id: str) -> TradeTracking:
+        return self.update_trade_status(
+            db=db,
+            trade_id=trade_id,
+            new_status=TrackingStatus.BUY_ZONE_HIT,
+            event_type=TradeEventType.BUY_ZONE_HIT,
+            event_message="Buy zone hit.",
+            telegram_message_id=message_id,
+            alert_sent=True
+        )
+
+    # Safely updates the actual entry price of the trade once it gets executed.
+    def record_execution(self, db: Session, trade_id: int, entry_price: float) -> TradeTracking:
+        trade = db.query(TradeTracking).with_for_update().filter(TradeTracking.id == trade_id).first()
+        if not trade:
+            raise ValueError(f"TradeTracking with id {trade_id} not found.")
+        
+        trade.entry_price = entry_price
         db.flush()
         return trade
