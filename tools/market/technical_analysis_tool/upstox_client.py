@@ -212,7 +212,7 @@ async def fetch_upstox_batch(
     intervals: list[str] = None,
 ) -> dict:
     """
-    Fetch candlestick data for multiple instruments in parallel.
+    Fetch candlestick data for multiple instruments concurrently.
 
     Args:
         instrument_keys: List of Upstox instrument keys, e.g., ["NSE_EQ|INE002A01018", ...]
@@ -233,58 +233,103 @@ async def fetch_upstox_batch(
         intervals = ["1m", "5m", "15m", "1d"]
 
     client = UpstoxClient(UPSTOX_TOKEN, UPSTOX_API_BASE_URL)
-    results = {}
 
-    # Create tasks: one per (instrument, interval) pair
-    tasks = []
+    # Build (key, interval, days_back) descriptors
+    job_descriptors = []
     for instrument_key in instrument_keys:
         for interval in intervals:
-            # Match yfinance lookback: 1m → 1 day, 5m → 5 days, 15m → 5 days
-            # We use days_back=1 for 1m to ensure we have enough data even at market open
             if interval == "1d":
                 days_back = 10
             elif interval == "1m":
                 days_back = 1
             else:
                 days_back = 5
-            tasks.append((instrument_key, interval, client.fetch_candles(instrument_key, interval, days_back)))
+            job_descriptors.append((instrument_key, interval, days_back))
 
-    # Execute all tasks concurrently (respects per-request rate limiting)
-    for instrument_key, interval, task in tasks:
-        try:
-            df = await task
-            if instrument_key not in results:
-                results[instrument_key] = {}
-            results[instrument_key][interval] = df
-        except Exception as e:
-            logger.error(f"Error fetching {instrument_key} [{interval}]: {e}")
-            if instrument_key not in results:
-                results[instrument_key] = {}
+    # Fire all coroutines concurrently via asyncio.gather
+    coros = [
+        client.fetch_candles(key, interval, days_back)
+        for key, interval, days_back in job_descriptors
+    ]
+    outcomes = await asyncio.gather(*coros, return_exceptions=True)
+
+    # Collate results
+    results = {}
+    for (instrument_key, interval, _), outcome in zip(job_descriptors, outcomes):
+        if instrument_key not in results:
+            results[instrument_key] = {}
+
+        if isinstance(outcome, Exception):
+            logger.error(f"Error fetching {instrument_key} [{interval}]: {outcome}")
             results[instrument_key][interval] = None
+        else:
+            results[instrument_key][interval] = outcome
 
     return results
 
 async def fetch_ltp_batch(instrument_keys: list[str]) -> dict:
     """
-    Fetch LTP for multiple instruments in parallel.
+    Fetch LTP for multiple instruments in a single batched API call.
+
+    The Upstox V3 ``/market-quote/ltp`` endpoint accepts comma-separated
+    instrument_keys, so we collapse all requested symbols into one HTTP
+    request instead of making N sequential round-trips.
+
     Args:
-        instrument_keys: List of Upstox instrument keys.
+        instrument_keys: List of Upstox instrument keys,
+            e.g. ["NSE_EQ|INE002A01018", "NSE_EQ|INE009A01021"]
+
     Returns:
-        dict: {"instrument_key": float(ltp), ...}
+        dict mapping each instrument_key to its LTP (float), or None
+        on per-key failure.  Example::
+
+            {"NSE_EQ|INE002A01018": 1432.50, "NSE_EQ|INE009A01021": None}
     """
+    if not instrument_keys:
+        return {}
+
     client = UpstoxClient(UPSTOX_TOKEN, UPSTOX_API_BASE_URL)
-    results = {}
-    
-    tasks = []
-    for instrument_key in instrument_keys:
-        tasks.append((instrument_key, client.fetch_ltp(instrument_key)))
-        
-    for instrument_key, task in tasks:
-        try:
-            ltp = await task
-            results[instrument_key] = ltp
-        except Exception as e:
-            logger.error(f"Error fetching LTP for {instrument_key}: {e}")
-            results[instrument_key] = None
-            
+    results: dict = {key: None for key in instrument_keys}
+
+    try:
+        keys_csv = ",".join(instrument_keys)
+        url = f"{client.base_url}/market-quote/ltp?instrument_key={keys_csv}"
+
+        await client._rate_limit()
+
+        async with httpx.AsyncClient(timeout=10.0) as http:
+            response = await http.get(url, headers=client.headers)
+            response.raise_for_status()
+
+        data = response.json()
+        if data.get("status") != "success":
+            logger.warning(f"Upstox batch LTP error: {data.get('errors', 'Unknown error')}")
+            return results
+
+        quotes = data.get("data", {})
+        for api_key, instrument_data in quotes.items():
+            # Upstox may return keys with a slightly different format
+            # (e.g. "NSE_EQ:RELIANCE" vs "NSE_EQ|INE..."). Match back
+            # to the original requested keys first, fall back to the
+            # raw API key.
+            matched_key = api_key if api_key in results else None
+            if matched_key is None:
+                # Try to find a matching requested key by comparing
+                for req_key in instrument_keys:
+                    if req_key in api_key or api_key in req_key:
+                        matched_key = req_key
+                        break
+
+            if matched_key is not None:
+                ltp = instrument_data.get("last_price")
+                if ltp is not None:
+                    results[matched_key] = float(ltp)
+            else:
+                logger.debug(f"Unmatched LTP key from API response: {api_key}")
+
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error fetching batch LTP: {e.response.status_code} — {e}")
+    except Exception as e:
+        logger.error(f"Error fetching batch LTP: {e}")
+
     return results

@@ -1,9 +1,11 @@
 import logging
 import asyncio
 from datetime import datetime
-from typing import Dict, List
+from typing import List, Optional
 
-from ..models.tracking_object import TrackingObject, TrackingStatus
+from db.database import SessionLocal
+from db.models.trade_tracking import TradeTracking, TrackingStatus, TradeEventType
+from db.repositories.trade_tracking import TradeTrackingRepository
 from .market_data_service import fetch_prices
 from .notification import NotificationChannel
 
@@ -15,152 +17,206 @@ EXPIRY_MINUTES: int = 60
 
 class MonitoringScheduler:
     """
-    Single scheduler that maintains the watchlist dict and runs the loop.
-    Evaluates all active stocks per tick and broadcasts events to channels.
+    DB-backed scheduler that queries PostgreSQL for active/tracking trades
+    each tick, evaluates live market prices, and broadcasts alerts through
+    registered notification channels.  All state mutations are persisted
+    atomically via TradeTrackingRepository.
     """
 
-    def __init__(self, watchlist: Dict[str, TrackingObject], channels: List[NotificationChannel]) -> None:
-        self.watchlist = watchlist
+    def __init__(self, channels: List[NotificationChannel]) -> None:
         self.channels = channels
+        self.repo = TradeTrackingRepository()
         self._tick_count: int = 0
 
     async def run(self) -> None:
         self._print_banner()
 
         while True:
-            if not self.watchlist:
-                logger.info("[SCHEDULER] No active stocks remaining — service complete.")
-                break
+            trade_count = await self._run_tick()
 
-            await self._run_tick()
+            if trade_count == 0:
+                logger.info("[SCHEDULER] No active/tracking trades remaining — service sleeping.")
 
-            if not self.watchlist:
-                logger.info("[SCHEDULER] All stocks resolved — service complete.")
-                break
-
-            logger.debug(f"[SLEEP] {TICK_INTERVAL_SECONDS}s until next tick ({len(self.watchlist)} active)")
+            logger.debug(f"[SLEEP] {TICK_INTERVAL_SECONDS}s until next tick ({trade_count} monitored)")
             await asyncio.sleep(TICK_INTERVAL_SECONDS)
 
-    async def _run_tick(self) -> None:
+    async def _run_tick(self) -> int:
+        """
+        Execute a single monitoring tick.
+        Returns the number of trades that were evaluated.
+        """
         self._tick_count += 1
         now_str = datetime.now().strftime("%H:%M:%S")
 
-        logger.debug(f"[TICK #{self._tick_count}] {now_str} — {len(self.watchlist)} stock(s) active")
+        with SessionLocal() as db:
+            try:
+                trades: List[TradeTracking] = self.repo.get_active_and_tracking_trades(db)
 
-        # ── Step 1: Expiry check (Only for un-entered tracking state) ─────────
-        expired = []
-        for symbol, obj in self.watchlist.items():
-            if obj.status == TrackingStatus.TRACKING and obj.elapsed_minutes() > EXPIRY_MINUTES:
-                logger.debug(f"[EXPIRED] {symbol} elapsed={obj.elapsed_minutes():.1f}m")
-                expired.append(symbol)
+                if not trades:
+                    logger.debug(f"[TICK #{self._tick_count}] {now_str} — 0 trades to monitor")
+                    return 0
 
-        for symbol in expired:
-            self.watchlist[symbol].status = TrackingStatus.EXPIRED
-            del self.watchlist[symbol]
+                logger.debug(f"[TICK #{self._tick_count}] {now_str} — {len(trades)} trade(s) active")
 
-        if not self.watchlist:
-            logger.debug("[TICK] All remaining stocks expired this tick.")
-            return
+                # ── Step 1: Expiry check (only TRACKING trades) ──────────────
+                for trade in trades:
+                    if trade.status == TrackingStatus.TRACKING:
+                        elapsed = (datetime.now(trade.created_at.tzinfo) - trade.created_at).total_seconds() / 60
+                        if elapsed > EXPIRY_MINUTES:
+                            logger.debug(f"[EXPIRED] {trade.symbol} elapsed={elapsed:.1f}m")
+                            self.repo.update_trade_status(
+                                db=db,
+                                trade_id=trade.id,
+                                new_status=TrackingStatus.EXPIRED,
+                                event_type=TradeEventType.EXPIRED,
+                                event_message=f"Trade expired after {elapsed:.1f} minutes without entering buy zone.",
+                            )
 
-        # ── Step 2: Fetch prices ──────────────────────────────────────────────
-        symbols = list(self.watchlist.keys())
-        logger.debug(f"[FETCH] Requesting prices for: {', '.join(symbols)}")
-        prices = await fetch_prices(symbols)
+                # Refresh the list after expiry processing
+                trades = self.repo.get_active_and_tracking_trades(db)
 
-        if not prices:
-            logger.debug("[FETCH] No prices returned this tick — will retry next tick.")
-            return
+                if not trades:
+                    logger.debug("[TICK] All remaining trades expired this tick.")
+                    db.commit()
+                    return 0
 
-        # ── Step 3: Evaluate each active stock ────────────────────────────────
-        to_remove = []
-        for symbol, obj in self.watchlist.items():
-            current_price = prices.get(symbol)
-            if current_price is None:
-                logger.debug(f"[SKIP] {symbol} — price unavailable this tick")
-                continue
+                # ── Step 2: Fetch live prices ────────────────────────────────
+                symbols = list(set(t.symbol for t in trades))
+                logger.debug(f"[FETCH] Requesting prices for: {', '.join(symbols)}")
+                prices = await fetch_prices(symbols)
 
-            # Phase A: Waiting for entry
-            if obj.status == TrackingStatus.TRACKING:
-                in_zone = obj.entry_plan.buy_zone.min <= current_price <= obj.entry_plan.buy_zone.max
-                status_icon = "✅" if in_zone else "⏳"
+                if not prices:
+                    logger.debug("[FETCH] No prices returned this tick — will retry next tick.")
+                    db.commit()
+                    return len(trades)
 
-                logger.debug(
-                    f"{status_icon} {symbol:<22} ₹{current_price:<10}  "
-                    f"zone=₹{obj.entry_plan.buy_zone.min}→₹{obj.entry_plan.buy_zone.max}  "
-                    f"{'IN ZONE' if in_zone else 'outside'}"
-                )
+                # ── Step 3: Evaluate each trade ──────────────────────────────
+                for trade in trades:
+                    current_price = prices.get(trade.symbol)
+                    if current_price is None:
+                        logger.debug(f"[SKIP] {trade.symbol} — price unavailable this tick")
+                        continue
 
-                if in_zone:
-                    logger.debug(
-                        f"[ZONE HIT] {obj.symbol} — ₹{current_price} is inside "
-                        f"₹{obj.entry_plan.buy_zone.min}→₹{obj.entry_plan.buy_zone.max}"
-                    )
-                    success = self._broadcast_alert(obj, current_price, "ENTRY")
-                    if success:
-                        obj.status = TrackingStatus.ACTIVE
-                        obj.alert_sent = True
-                        obj.entry_price = current_price
-                        # We DONT remove it because we want to track target/stoploss now
-                    else:
-                        logger.warning(
-                            f"[RETRY PENDING] Alert failed for {obj.symbol} on all channels  "
-                            f"— will retry on next tick if still in zone"
+                    # Phase A: TRACKING — waiting for buy zone entry
+                    if trade.status == TrackingStatus.TRACKING:
+                        in_zone = trade.buy_zone_min <= current_price <= trade.buy_zone_max
+                        status_icon = "✅" if in_zone else "⏳"
+
+                        logger.debug(
+                            f"{status_icon} {trade.symbol:<22} ₹{current_price:<10}  "
+                            f"zone=₹{trade.buy_zone_min}→₹{trade.buy_zone_max}  "
+                            f"{'IN ZONE' if in_zone else 'outside'}"
                         )
-            
-            # Phase B: Entered trade, waiting for target or stoploss
-            elif obj.status == TrackingStatus.ACTIVE:
-                # Check Stoploss
-                if current_price <= obj.stoploss_plan.hard_stoploss:
-                    logger.debug(f"[STOP LOSS HIT] {obj.symbol} — ₹{current_price} <= ₹{obj.stoploss_plan.hard_stoploss}")
-                    success = self._broadcast_alert(obj, current_price, "STOPLOSS")
-                    if success:
-                        obj.status = TrackingStatus.STOPLOSS_HIT
-                        to_remove.append(symbol)
-                        
-                # Check Target 1
-                elif current_price >= obj.target_plan.target_1:
-                    logger.debug(f"[TARGET 1 HIT] {obj.symbol} — ₹{current_price} >= ₹{obj.target_plan.target_1}")
-                    success = self._broadcast_alert(obj, current_price, "TARGET")
-                    if success:
-                        obj.status = TrackingStatus.TARGET_HIT
-                        to_remove.append(symbol)
-                else:
-                    logger.debug(f"🔵 {symbol:<22} ₹{current_price:<10}  ACTIVE (SL: ₹{obj.stoploss_plan.hard_stoploss}, T1: ₹{obj.target_plan.target_1})")
 
-        for symbol in to_remove:
-            del self.watchlist[symbol]
+                        if in_zone:
+                            logger.debug(
+                                f"[ZONE HIT] {trade.symbol} — ₹{current_price} is inside "
+                                f"₹{trade.buy_zone_min}→₹{trade.buy_zone_max}"
+                            )
+                            message_id = self._broadcast_alert(trade, current_price, "ENTRY")
+                            if message_id is not None:
+                                self.repo.mark_buy_zone_hit(db, trade.id, message_id)
+                            else:
+                                logger.warning(
+                                    f"[RETRY PENDING] Alert failed for {trade.symbol} on all channels  "
+                                    f"— will retry on next tick if still in zone"
+                                )
 
-    def _broadcast_alert(self, obj: TrackingObject, current_price: float, alert_type: str) -> bool:
+                    # Phase B: ACTIVE — monitoring for target or stoploss
+                    elif trade.status == TrackingStatus.ACTIVE:
+                        # Check Stoploss
+                        if current_price <= trade.hard_stoploss:
+                            logger.debug(f"[STOP LOSS HIT] {trade.symbol} — ₹{current_price} <= ₹{trade.hard_stoploss}")
+                            message_id = self._broadcast_alert(trade, current_price, "STOPLOSS")
+                            if message_id is not None:
+                                self.repo.update_trade_status(
+                                    db=db,
+                                    trade_id=trade.id,
+                                    new_status=TrackingStatus.STOPLOSS_HIT,
+                                    event_type=TradeEventType.STOPLOSS_HIT,
+                                    event_message=f"Hard stoploss hit at ₹{current_price}.",
+                                    event_details={"hit_price": current_price, "stoploss_level": trade.hard_stoploss},
+                                    alert_sent=True,
+                                )
+                            else:
+                                logger.warning(
+                                    f"[RETRY PENDING] Stoploss alert failed for {trade.symbol} "
+                                    f"— will retry next tick"
+                                )
+
+                        # Check Target 1
+                        elif current_price >= trade.target_1:
+                            logger.debug(f"[TARGET 1 HIT] {trade.symbol} — ₹{current_price} >= ₹{trade.target_1}")
+                            message_id = self._broadcast_alert(trade, current_price, "TARGET")
+                            if message_id is not None:
+                                self.repo.update_trade_status(
+                                    db=db,
+                                    trade_id=trade.id,
+                                    new_status=TrackingStatus.TARGET_1_HIT,
+                                    event_type=TradeEventType.TARGET_1_HIT,
+                                    event_message=f"Target 1 hit at ₹{current_price}.",
+                                    event_details={"hit_price": current_price, "target_level": 1, "target_value": trade.target_1},
+                                    alert_sent=True,
+                                )
+                            else:
+                                logger.warning(
+                                    f"[RETRY PENDING] Target alert failed for {trade.symbol} "
+                                    f"— will retry next tick"
+                                )
+                        else:
+                            logger.debug(
+                                f"🔵 {trade.symbol:<22} ₹{current_price:<10}  "
+                                f"ACTIVE (SL: ₹{trade.hard_stoploss}, T1: ₹{trade.target_1})"
+                            )
+
+                # ── Step 4: Commit all state mutations ───────────────────────
+                db.commit()
+                return len(trades)
+
+            except Exception as exc:
+                logger.error(f"[TICK ERROR] Unexpected error during tick #{self._tick_count}: {exc}", exc_info=True)
+                db.rollback()
+                return 0
+
+    def _broadcast_alert(self, trade: TradeTracking, current_price: float, alert_type: str) -> Optional[str]:
         """
         Send alert to all configured channels.
-        Returns True if at least one channel successfully sent the alert.
-        Returns False if all channels failed (or if no channels configured).
+        Returns the message_id from the first channel that succeeds,
+        or None if all channels failed (or if no channels configured).
         """
         if not self.channels:
             logger.warning("No notification channels configured to broadcast alert.")
-            return True # Consider "sent" if there are no channels, to avoid endless retrying
+            return "no_channel"  # Sentinel — don't block state transitions when no channels exist
 
-        success = False
+        first_message_id: Optional[str] = None
         for channel in self.channels:
-            if channel.send_alert(obj, current_price, alert_type):
-                success = True
-                
-        return success
+            try:
+                result = channel.send_alert(trade, current_price, alert_type)
+                if result is not None and first_message_id is None:
+                    first_message_id = result
+            except Exception as exc:
+                logger.error(f"[CHANNEL ERROR] {channel.__class__.__name__} failed for {trade.symbol}: {exc}")
+
+        return first_message_id
 
     def _print_banner(self) -> None:
+        with SessionLocal() as db:
+            trades = self.repo.get_active_and_tracking_trades(db)
+
         lines = [
             "╔══════════════════════════════════════════════╗",
             "║       MARKET ALERT SERVICE — LIVE            ║",
             "╚══════════════════════════════════════════════╝",
-            f"  Tracking  : {len(self.watchlist)} stock(s)",
+            f"  Tracking  : {len(trades)} trade(s) in database",
             f"  Tick every: {TICK_INTERVAL_SECONDS}s",
             f"  Expiry at : {EXPIRY_MINUTES} minutes",
             f"  Channels  : {len(self.channels)} active",
             "  ─────────────────────────────────────────────",
         ]
-        for sym, obj in self.watchlist.items():
+        for trade in trades:
             lines.append(
-                f"  {sym:<22} zone=₹{obj.entry_plan.buy_zone.min}→₹{obj.entry_plan.buy_zone.max}"
+                f"  {trade.symbol:<22} zone=₹{trade.buy_zone_min}→₹{trade.buy_zone_max}  "
+                f"status={trade.status.value}"
             )
         lines.append("  ─────────────────────────────────────────────")
         logger.info("\n" + "\n".join(lines))
