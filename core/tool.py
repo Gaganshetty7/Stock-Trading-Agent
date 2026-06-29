@@ -29,16 +29,15 @@ def describe_tools(names: list[str]) -> str:
     return "\n".join(lines)
 
 
-# ── Tool Initialization ───────────────────────────────────────────────────────
-from tools.storage.file_writer import write_json
-from tools.web.broad_market_feeds.broad_rss_fetcher import fetch_broad_market_rss
-from tools.market.technical_analysis_tool.tool import fetch_and_save_technicals
-from tools.web.ranker.tool import rank_news_payload
-from tools.web.selector.tool import select_top_stocks
-from tools.trade_brain.trade_strategy.tool import trade_strategy
-
 def init_tools() -> None:
     """Call this ONCE at application startup."""
+    from tools.storage.file_writer import write_json
+    from tools.web.broad_market_feeds.broad_rss_fetcher import fetch_broad_market_rss
+    from tools.market.technical_analysis_tool.tool import fetch_and_save_technicals
+    from tools.web.ranker.tool import rank_news_payload
+    from tools.web.selector.tool import select_top_stocks
+    from tools.trade_brain.trade_strategy.tool import trade_strategy
+    
     register_tool(
         "write_json",
         write_json,

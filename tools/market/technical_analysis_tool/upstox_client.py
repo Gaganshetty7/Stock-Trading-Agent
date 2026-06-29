@@ -15,6 +15,7 @@ from typing import Optional
 
 import httpx
 import pandas as pd
+import urllib.parse
 
 from config.settings import UPSTOX_TOKEN, UPSTOX_API_BASE_URL
 from core.logger import get_logger
@@ -42,50 +43,50 @@ class UpstoxClient:
     async def fetch_candles(
         self,
         instrument_key: str,
-        interval: str,  # "1", "5", "15"
+        interval: str,  # "1m", "5m", "15m", or "1d"
         days_back: int = 30,
         max_retries: int = 3,
     ) -> Optional[pd.DataFrame]:
         """
         Fetch candlestick data for a single instrument.
 
-        If no candles are returned (e.g. weekend, holiday), the method
-        automatically increments `days_back` by 1 and retries, up to
-        `max_retries` additional attempts.  HTTP errors and other
-        exceptions bail out immediately without retrying.
+        For intraday intervals ("1m", "5m", "15m"), it fetches both historical
+        and current intraday (live today's) candles and combines them.
+        For daily interval ("1d"), it fetches historical candles.
 
         Args:
             instrument_key: Upstox format, e.g., "NSE_EQ|INE002A01018"
             interval: "1m", "5m", "15m", or "1d"
-            days_back: How many days to look back (max 30 for intraday)
+            days_back: How many days to look back
             max_retries: Extra attempts with incremented days_back on empty results
 
         Returns:
             pandas DataFrame with columns: Open, High, Low, Close, Volume
             OR None if request fails
         """
+        quoted_key = urllib.parse.quote(instrument_key)
+        
+        # 1. Fetch historical data
+        hist_df = None
         for attempt in range(max_retries + 1):
             current_days_back = days_back + attempt
             try:
-                # Calculate date range
                 to_date = datetime.now(IST).date()
                 from_date = to_date - timedelta(days=current_days_back)
 
                 if interval == "1d":
                     url = (
-                        f"{self.base_url}/historical-candle/{instrument_key}/days/1/"
+                        f"{self.base_url}/historical-candle/{quoted_key}/days/1/"
                         f"{to_date.isoformat()}/{from_date.isoformat()}"
                     )
                 else:
                     upstox_interval = interval.replace("m", "")
                     url = (
-                        f"{self.base_url}/historical-candle/{instrument_key}/minutes/{upstox_interval}/"
+                        f"{self.base_url}/historical-candle/{quoted_key}/minutes/{upstox_interval}/"
                         f"{to_date.isoformat()}/{from_date.isoformat()}"
                     )
 
-                logger.debug(f"Fetching {instrument_key} [{interval}] from {from_date} to {to_date}")
-
-                # Respect rate limit: 50 req/sec
+                logger.debug(f"Fetching historical {instrument_key} [{interval}] from {from_date} to {to_date}")
                 await self._rate_limit()
 
                 async with httpx.AsyncClient(timeout=30.0) as client:
@@ -93,50 +94,79 @@ class UpstoxClient:
                     response.raise_for_status()
 
                 data = response.json()
-
                 if data.get("status") != "success":
-                    logger.warning(f"Upstox error for {instrument_key}: {data.get('error', 'Unknown error')}")
+                    logger.warning(f"Upstox historical error for {instrument_key}: {data.get('error', 'Unknown error')}")
                     return None
 
                 candles = data.get("data", {}).get("candles", [])
                 if not candles:
                     if attempt < max_retries:
                         logger.info(
-                            f"No candles for {instrument_key} [{interval}] with "
+                            f"No historical candles for {instrument_key} [{interval}] with "
                             f"days_back={current_days_back}, expanding to {current_days_back + 1}"
                         )
                         continue
                     logger.warning(
-                        f"No candles returned for {instrument_key} [{interval}] "
-                        f"after {max_retries + 1} attempts (days_back reached {current_days_back})"
+                        f"No historical candles returned for {instrument_key} [{interval}] "
+                        f"after {max_retries + 1} attempts"
                     )
-                    return None
-
-                # Transform array format to DataFrame
-                df = self._transform_to_dataframe(candles)
-                logger.debug(f"Successfully fetched {len(df)} candles for {instrument_key}")
-                return df
+                else:
+                    hist_df = self._transform_to_dataframe(candles)
+                break
 
             except httpx.HTTPStatusError as e:
-                if e.response.status_code == 401:
-                    logger.error(f"Authentication failed: Check UPSTOX_TOKEN. {e}")
-                elif e.response.status_code == 404:
-                    logger.warning(f"Instrument not found: {instrument_key}")
-                elif e.response.status_code == 429:
-                    logger.warning(f"Rate limit exceeded. Consider reducing request rate.")
-                else:
-                    logger.error(f"HTTP error {e.response.status_code}: {e}")
+                logger.error(f"HTTP error {e.response.status_code} fetching historical {instrument_key}: {e}")
                 return None
-
             except asyncio.TimeoutError:
-                logger.error(f"Request timeout for {instrument_key}")
+                logger.error(f"Request timeout for historical {instrument_key}")
                 return None
-
             except Exception as e:
-                logger.error(f"Unexpected error fetching {instrument_key}: {e}")
+                logger.error(f"Unexpected error fetching historical {instrument_key}: {e}")
                 return None
 
-        return None
+        # 2. Fetch intraday data if interval is not 1d
+        intra_df = None
+        if interval != "1d":
+            try:
+                upstox_interval = interval.replace("m", "")
+                url = f"{self.base_url}/historical-candle/intraday/{quoted_key}/minutes/{upstox_interval}"
+                
+                logger.debug(f"Fetching intraday {instrument_key} [{interval}]")
+                await self._rate_limit()
+
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.get(url, headers=self.headers)
+                    response.raise_for_status()
+                    
+                data = response.json()
+                if data.get("status") == "success":
+                    candles = data.get("data", {}).get("candles", [])
+                    if candles:
+                        intra_df = self._transform_to_dataframe(candles)
+            except httpx.HTTPStatusError as e:
+                logger.error(f"HTTP error {e.response.status_code} fetching intraday {instrument_key}: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error fetching intraday {instrument_key}: {e}")
+
+        # 3. Combine DataFrames
+        if hist_df is None and intra_df is None:
+            return None
+        
+        dfs_to_concat = []
+        if hist_df is not None and not hist_df.empty:
+            dfs_to_concat.append(hist_df)
+        if intra_df is not None and not intra_df.empty:
+            dfs_to_concat.append(intra_df)
+            
+        if not dfs_to_concat:
+            return None
+            
+        combined_df = pd.concat(dfs_to_concat)
+        combined_df = combined_df[~combined_df.index.duplicated(keep='last')]
+        combined_df.sort_index(ascending=True, inplace=True)
+        
+        logger.debug(f"Successfully fetched {len(combined_df)} combined candles for {instrument_key}")
+        return combined_df
 
     async def fetch_ltp(self, instrument_key: str) -> Optional[float]:
         """Fetch the latest LTP for a single instrument key."""
@@ -308,24 +338,13 @@ async def fetch_ltp_batch(instrument_keys: list[str]) -> dict:
 
         quotes = data.get("data", {})
         for api_key, instrument_data in quotes.items():
-            # Upstox may return keys with a slightly different format
-            # (e.g. "NSE_EQ:RELIANCE" vs "NSE_EQ|INE..."). Match back
-            # to the original requested keys first, fall back to the
-            # raw API key.
-            matched_key = api_key if api_key in results else None
-            if matched_key is None:
-                # Try to find a matching requested key by comparing
-                for req_key in instrument_keys:
-                    if req_key in api_key or api_key in req_key:
-                        matched_key = req_key
-                        break
-
-            if matched_key is not None:
+            matched_key = instrument_data.get("instrument_token")
+            if matched_key and matched_key in results:
                 ltp = instrument_data.get("last_price")
                 if ltp is not None:
                     results[matched_key] = float(ltp)
             else:
-                logger.debug(f"Unmatched LTP key from API response: {api_key}")
+                logger.debug(f"Unmatched LTP key from API response: {api_key}, token: {matched_key}")
 
     except httpx.HTTPStatusError as e:
         logger.error(f"HTTP error fetching batch LTP: {e.response.status_code} — {e}")

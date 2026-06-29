@@ -7,6 +7,7 @@
 # Used internally by tool.py — do not import directly in agents.
 # =========================================================
 
+import math
 from datetime import datetime, timezone, timedelta
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -59,9 +60,12 @@ def process_stock(ticker, data, data_5m, data_15m, data_1d, ltp: float = None):
         L = float(last_block["Low"].min())
         C = last_traded_price
 
-        today_open     = float(data["Open"].iloc[0])
-        today_high     = float(data["High"].max())
-        today_low      = float(data["Low"].min())
+        last_date = data.index[-1].date()
+        today_data = data[data.index.date == last_date].copy()
+
+        today_open     = float(today_data["Open"].iloc[0])
+        today_high     = float(today_data["High"].max())
+        today_low      = float(today_data["Low"].min())
 
         now_date = datetime.now(IST).date()
         if data_1d.index[-1].date() == now_date:
@@ -91,18 +95,27 @@ def process_stock(ticker, data, data_5m, data_15m, data_1d, ltp: float = None):
         ma20_15m = float(data_15m["MA20"].iloc[-2])
 
         # ----- VWAP -----
-        typical_price        = (data["High"] + data["Low"] + data["Close"]) / 3
-        cumulative_tp_volume = (typical_price * data["Volume"]).cumsum()
-        cumulative_volume    = data["Volume"].cumsum()
-        data["VWAP"]         = cumulative_tp_volume / cumulative_volume
-        vwap                 = float(data["VWAP"].iloc[-2])
+        typical_price        = (today_data["High"] + today_data["Low"] + today_data["Close"]) / 3
+        cumulative_tp_volume = (typical_price * today_data["Volume"]).cumsum()
+        cumulative_volume    = today_data["Volume"].cumsum()
+        today_data["VWAP"]   = cumulative_tp_volume / cumulative_volume
+        if len(today_data) >= 2:
+            vwap = float(today_data["VWAP"].iloc[-2])
+        else:
+            vwap = float(today_data["VWAP"].iloc[-1])
+            
+        if math.isnan(vwap):
+            vwap = 0.0
 
         # ----- RSI -----
         rsi_1m = calculate_rsi(data)
+        if math.isnan(rsi_1m): rsi_1m = 50.0
+        
         rsi_5m = calculate_rsi(data_5m)
+        if math.isnan(rsi_5m): rsi_5m = 50.0
 
         # ----- Volume -----
-        total_volume    = int(data["Volume"].sum())
+        total_volume    = int(today_data["Volume"].sum())
         last_volume     = int(data["Volume"].iloc[-2])
         average_volume_20m  = float(data["Volume"].iloc[-21:-1].mean())
         volume_strength_20m = (last_volume / average_volume_20m) if average_volume_20m != 0 else 0
