@@ -78,6 +78,16 @@ class TelegramChannel(NotificationChannel):
             "parse_mode": "Markdown",
         }
 
+        # Attach inline keyboard buttons for ENTRY alerts only
+        if alert_type == "ENTRY":
+            payload["reply_markup"] = {
+                "inline_keyboard": [[
+                    {"text": "✅ Confirm", "callback_data": f"confirm:{trade.id}"},
+                    {"text": "❌ Reject",  "callback_data": f"reject:{trade.id}"},
+                    {"text": "⏰ Snooze",  "callback_data": f"snooze:{trade.id}"},
+                ]]
+            }
+
         try:
             resp = requests.post(url, json=payload, timeout=self._timeout_seconds)
 

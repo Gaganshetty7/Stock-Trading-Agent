@@ -50,7 +50,7 @@ def main() -> None:
 
     # ── Run — scheduler reads trades from the database (no plan file needed) ──
     try:
-        scheduler = MonitoringScheduler(active_channels)
+        scheduler = MonitoringScheduler(active_channels, telegram_enabled=settings.ENABLE_TELEGRAM_ALERTS)
         logger.info("[MAIN] Service startup initialized — scheduler is DB-driven.")
         asyncio.run(scheduler.run())
     except KeyboardInterrupt:

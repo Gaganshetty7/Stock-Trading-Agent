@@ -107,3 +107,22 @@ class TradeTrackingRepository:
         trade.entry_price = entry_price
         db.flush()
         return trade
+
+    # Fetches specific trades by their IDs (used for snooze re-evaluation).
+    def get_trades_by_ids(self, db: Session, trade_ids: List[int]) -> List[TradeTracking]:
+        if not trade_ids:
+            return []
+        return db.query(TradeTracking).filter(TradeTracking.id.in_(trade_ids)).all()
+
+    # Fetches all trades that are NOT in a terminal state (for market close bulk update).
+    def get_all_non_terminal_trades(self, db: Session) -> List[TradeTracking]:
+        terminal_statuses = [
+            TrackingStatus.TARGET_1_HIT,
+            TrackingStatus.STOPLOSS_HIT,
+            TrackingStatus.EXPIRED,
+            TrackingStatus.IGNORED,
+            TrackingStatus.MARKET_CLOSED,
+        ]
+        return db.query(TradeTracking).filter(
+            TradeTracking.status.notin_(terminal_statuses)
+        ).all()

@@ -9,11 +9,13 @@ from db.database import Base
 class TrackingStatus(str, PyEnum):
     TRACKING = "TRACKING"
     BUY_ZONE_HIT = "BUY_ZONE_HIT"
+    SNOOZED = "SNOOZED"
     ACTIVE = "ACTIVE"
     TARGET_1_HIT = "TARGET_1_HIT"
     STOPLOSS_HIT = "STOPLOSS_HIT"
     EXPIRED = "EXPIRED"
     IGNORED = "IGNORED"
+    MARKET_CLOSED = "MARKET_CLOSED"
 
 def get_ist_now():
     return datetime.now(pytz.timezone('Asia/Kolkata'))

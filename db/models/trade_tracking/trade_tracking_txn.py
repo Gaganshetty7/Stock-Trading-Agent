@@ -14,6 +14,9 @@ class TradeEventType(str, PyEnum):
     # Tracking phase
     BUY_ZONE_HIT = "BUY_ZONE_HIT"
 
+    # User actions
+    ACTIVATED = "ACTIVATED"
+
     # Profit milestones
     TARGET_1_HIT = "TARGET_1_HIT"
 
@@ -21,7 +24,7 @@ class TradeEventType(str, PyEnum):
     STOPLOSS_HIT = "STOPLOSS_HIT"
 
     # Trade termination
-    TRADE_CLOSED = "TRADE_CLOSED"
+    MARKET_CLOSED = "MARKET_CLOSED"
     EXPIRED = "EXPIRED"
     IGNORED = "IGNORED"
 
