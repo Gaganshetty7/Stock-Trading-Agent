@@ -37,6 +37,7 @@ class TradeTracking(Base):
     target_3 = Column(Float, nullable=True)
 
     # Rich Context Data
+    run_batch = Column(String, nullable=True)
     decision = Column(String, nullable=False)
     confidence = Column(Integer, nullable=False)
     entry_type = Column(String, nullable=False)

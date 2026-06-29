@@ -155,7 +155,7 @@ class MonitoringScheduler:
                             )
                             message_id = self._broadcast_alert(trade, current_price, "ENTRY")
                             if message_id is not None:
-                                self.repo.mark_buy_zone_hit(db, trade.id, message_id)
+                                self.repo.mark_buy_zone_hit(db, trade.id, message_id, current_price)
                             else:
                                 logger.warning(
                                     f"[RETRY PENDING] Alert failed for {trade.symbol} on all channels  "
@@ -167,7 +167,8 @@ class MonitoringScheduler:
                         # Check Stoploss
                         if current_price <= trade.hard_stoploss:
                             logger.debug(f"[STOP LOSS HIT] {trade.symbol} — ₹{current_price} <= ₹{trade.hard_stoploss}")
-                            message_id = self._broadcast_alert(trade, current_price, "STOPLOSS")
+                            buying_price = self._get_buying_price(db, trade)
+                            message_id = self._broadcast_alert(trade, current_price, "STOPLOSS", buying_price=buying_price)
                             if message_id is not None:
                                 self.repo.update_trade_status(
                                     db=db,
@@ -187,7 +188,8 @@ class MonitoringScheduler:
                         # Check Target 1
                         elif current_price >= trade.target_1:
                             logger.debug(f"[TARGET 1 HIT] {trade.symbol} — ₹{current_price} >= ₹{trade.target_1}")
-                            message_id = self._broadcast_alert(trade, current_price, "TARGET")
+                            buying_price = self._get_buying_price(db, trade)
+                            message_id = self._broadcast_alert(trade, current_price, "TARGET", buying_price=buying_price)
                             if message_id is not None:
                                 self.repo.update_trade_status(
                                     db=db,
@@ -271,6 +273,7 @@ class MonitoringScheduler:
                         new_status=TrackingStatus.BUY_ZONE_HIT,
                         event_type=TradeEventType.BUY_ZONE_HIT,
                         event_message=f"Snooze expired — price ₹{current_price} still in buy zone. Re-alerted.",
+                        event_details={"ltp": current_price},
                         telegram_message_id=message_id,
                         alert_sent=True,
                     )
@@ -308,27 +311,55 @@ class MonitoringScheduler:
             db.commit()
             return
 
+        # Fetch prices for active trades
+        from .market_data_service import fetch_prices
+        active_symbols = [t.symbol for t in open_trades if t.status == TrackingStatus.ACTIVE]
+        prices = {}
+        if active_symbols:
+            try:
+                prices = await fetch_prices(list(set(active_symbols)))
+            except Exception as exc:
+                logger.error(f"[MARKET CLOSE] Failed to fetch prices: {exc}")
+
         for trade in open_trades:
+            previous_status = trade.status
             self.repo.update_trade_status(
                 db=db,
                 trade_id=trade.id,
                 new_status=TrackingStatus.MARKET_CLOSED,
                 event_type=TradeEventType.MARKET_CLOSED,
-                event_message=f"Market closed at 15:30 IST. Trade force-closed from {trade.status.value}.",
-                event_details={"previous_status": trade.status.value},
+                event_message=f"Market closed at 15:30 IST. Trade force-closed from {previous_status.value}.",
+                event_details={"previous_status": previous_status.value},
             )
-            logger.info(f"[MARKET CLOSE] {trade.symbol} ({trade.status.value} → MARKET_CLOSED)")
+            logger.info(f"[MARKET CLOSE] {trade.symbol} ({previous_status.value} → MARKET_CLOSED)")
+            
+            # Group A: ACTIVE trades (trigger individual MARKET_CLOSED exit message)
+            if previous_status == TrackingStatus.ACTIVE:
+                buying_price = self._get_buying_price(db, trade)
+                exit_price = prices.get(trade.symbol, trade.target_1) # fallback if fetch fails
+                self._broadcast_alert(trade, exit_price, "MARKET_CLOSED", buying_price=buying_price)
+                
+            # Group B: PENDING trades (update specific Telegram message to remove buttons)
+            elif previous_status in (TrackingStatus.BUY_ZONE_HIT, TrackingStatus.SNOOZED):
+                from db.models.trade_tracking.trade_tracking_txn import TradeTrackingTxn, TradeEventType as TxnEventType
+                
+                # Fetch the telegram_message_id from the original BUY_ZONE_HIT transaction
+                last_txn = db.query(TradeTrackingTxn).filter(
+                    TradeTrackingTxn.trade_tracking_id == trade.id,
+                    TradeTrackingTxn.event_type == TxnEventType.BUY_ZONE_HIT,
+                    TradeTrackingTxn.telegram_message_id.isnot(None)
+                ).order_by(TradeTrackingTxn.created_at.desc()).first()
+
+                if last_txn and last_txn.telegram_message_id and self._telegram_enabled and self.channels:
+                    for channel in self.channels:
+                        if hasattr(channel, 'edit_message_text'):
+                            # Regenerate the base text using entry_price or target_1
+                            base_price = trade.entry_price if trade.entry_price else trade.target_1
+                            new_text = channel._build_message(trade, base_price, "ENTRY")
+                            new_text += "\n\n🛑 **Market Closed at 15:30 IST. Trade force-closed.**"
+                            channel.edit_message_text(last_txn.telegram_message_id, new_text)
 
         db.commit()
-
-        # Send a single summary Telegram message (direct API call, not per-trade)
-        symbols = [t.symbol for t in open_trades]
-        summary = (
-            f"🔔 Market Closed — 15:30 IST\n\n"
-            f"{len(open_trades)} trade(s) force-closed:\n"
-            + "\n".join(f"  • {s}" for s in symbols)
-        )
-        self._send_telegram_text(summary)
 
         # Clear any pending snoozes
         self._snoozed_trades.clear()
@@ -336,6 +367,22 @@ class MonitoringScheduler:
         logger.info(f"[MARKET CLOSE] {len(open_trades)} trade(s) force-closed. Service stopping.")
 
     # ── Broadcast ────────────────────────────────────────────────────────────
+    
+    def _get_buying_price(self, db, trade: TradeTracking) -> float:
+        """Helper to get exact Buying Price for P&L calculation."""
+        if trade.entry_price:
+            return trade.entry_price
+            
+        from db.models.trade_tracking.trade_tracking_txn import TradeTrackingTxn, TradeEventType as TxnEventType
+        txn = db.query(TradeTrackingTxn).filter(
+            TradeTrackingTxn.trade_tracking_id == trade.id,
+            TradeTrackingTxn.event_type == TxnEventType.BUY_ZONE_HIT
+        ).order_by(TradeTrackingTxn.created_at.desc()).first()
+        
+        if txn and txn.details and "ltp" in txn.details:
+            return txn.details["ltp"]
+            
+        return (trade.buy_zone_min + trade.buy_zone_max) / 2
 
     def _send_telegram_text(self, text: str) -> None:
         """Send a raw text message to Telegram (for summaries, not per-trade alerts)."""
@@ -352,7 +399,7 @@ class MonitoringScheduler:
         except Exception as exc:
             logger.error(f"[TELEGRAM] Failed to send summary: {exc}")
 
-    def _broadcast_alert(self, trade: TradeTracking, current_price: float, alert_type: str) -> Optional[str]:
+    def _broadcast_alert(self, trade: TradeTracking, current_price: float, alert_type: str, buying_price: float = None) -> Optional[str]:
         """
         Send alert to all configured channels.
         Returns the message_id from the first channel that succeeds,
@@ -365,7 +412,7 @@ class MonitoringScheduler:
         first_message_id: Optional[str] = None
         for channel in self.channels:
             try:
-                result = channel.send_alert(trade, current_price, alert_type)
+                result = channel.send_alert(trade, current_price, alert_type, buying_price=buying_price)
                 if result is not None and first_message_id is None:
                     first_message_id = result
             except Exception as exc:

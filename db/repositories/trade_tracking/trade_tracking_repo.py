@@ -87,13 +87,14 @@ class TradeTrackingRepository:
         return trade
 
     # A shortcut method that specifically marks a trade as BUY_ZONE_HIT and logs the Telegram alert.
-    def mark_buy_zone_hit(self, db: Session, trade_id: int, message_id: str) -> TradeTracking:
+    def mark_buy_zone_hit(self, db: Session, trade_id: int, message_id: str, current_price: float) -> TradeTracking:
         return self.update_trade_status(
             db=db,
             trade_id=trade_id,
             new_status=TrackingStatus.BUY_ZONE_HIT,
             event_type=TradeEventType.BUY_ZONE_HIT,
             event_message="Buy zone hit.",
+            event_details={"ltp": current_price},
             telegram_message_id=message_id,
             alert_sent=True
         )

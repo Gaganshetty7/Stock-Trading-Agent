@@ -18,6 +18,7 @@ import pytz
 from db.database import SessionLocal
 from db.models.trade_tracking import TradeTracking, TrackingStatus, TradeEventType
 from db.repositories.trade_tracking import TradeTrackingRepository
+from services.market_alert_service.core.market_data_service import fetch_prices
 
 logger = logging.getLogger(__name__)
 
@@ -132,18 +133,60 @@ class TelegramBotListener:
                     return
 
                 if action == "confirm":
-                    self._repo.update_trade_status(
-                        db=db,
-                        trade_id=trade_id,
-                        new_status=TrackingStatus.ACTIVE,
-                        event_type=TradeEventType.ACTIVATED,
-                        event_message=f"Confirmed by user at {time_str}.",
-                        alert_sent=True,
-                    )
-                    db.commit()
-                    suffix = f"\n\n✅ Confirmed at {time_str}"
-                    toast = "Trade activated!"
-                    logger.info(f"[CALLBACK] {trade.symbol} CONFIRMED → ACTIVE")
+                    # Check live price to prevent late confirmations
+                    try:
+                        prices = await fetch_prices([trade.symbol])
+                        current_price = prices.get(trade.symbol)
+                    except Exception as exc:
+                        logger.error(f"[BOT LISTENER] fetch_prices failed during confirm: {exc}")
+                        current_price = None
+
+                    if current_price is None:
+                        # Fallback: API failed. Revert to tracking.
+                        self._repo.update_trade_status(
+                            db=db,
+                            trade_id=trade_id,
+                            new_status=TrackingStatus.TRACKING,
+                            event_type=TradeEventType.IGNORED,
+                            event_message=f"Confirmation failed at {time_str} (API error). Reverted to tracking.",
+                            alert_sent=True,
+                        )
+                        db.commit()
+                        suffix = f"\n\n⚠️ Confirmation failed: Live price fetch failed. Reverted to Tracking."
+                        toast = "API failed! Reverting."
+                        logger.warning(f"[CALLBACK] {trade.symbol} CONFIRM FAILED (API Error) → TRACKING")
+                        
+                    elif not (trade.buy_zone_min <= current_price <= trade.buy_zone_max):
+                        # Fallback: Price left zone. Revert to tracking.
+                        self._repo.update_trade_status(
+                            db=db,
+                            trade_id=trade_id,
+                            new_status=TrackingStatus.TRACKING,
+                            event_type=TradeEventType.IGNORED,
+                            event_message=f"Confirmation failed at {time_str} (Price ₹{current_price} outside zone). Reverted to tracking.",
+                            alert_sent=True,
+                        )
+                        db.commit()
+                        suffix = f"\n\n⚠️ Confirmation failed: Price (₹{current_price}) moved outside Buy Zone. Reverted to Tracking."
+                        toast = "Price left zone! Reverting."
+                        logger.info(f"[CALLBACK] {trade.symbol} CONFIRM REJECTED (Out of zone) → TRACKING")
+                        
+                    else:
+                        # Success: Price is valid.
+                        self._repo.update_trade_status(
+                            db=db,
+                            trade_id=trade_id,
+                            new_status=TrackingStatus.ACTIVE,
+                            event_type=TradeEventType.ACTIVATED,
+                            event_message=f"Confirmed by user at {time_str} (Price ₹{current_price}).",
+                            alert_sent=True,
+                        )
+                        # Also explicitly record the execution price so P&L math is perfect
+                        self._repo.record_execution(db=db, trade_id=trade_id, entry_price=current_price)
+                        db.commit()
+                        suffix = f"\n\n✅ Confirmed at {time_str} (Price: ₹{current_price})"
+                        toast = "Trade activated!"
+                        logger.info(f"[CALLBACK] {trade.symbol} CONFIRMED → ACTIVE @ ₹{current_price}")
 
                 elif action == "reject":
                     self._repo.update_trade_status(

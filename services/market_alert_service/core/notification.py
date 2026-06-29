@@ -11,7 +11,7 @@ class NotificationChannel(ABC):
     """
 
     @abstractmethod
-    def send_alert(self, trade: TradeTracking, current_price: float, alert_type: str = "ENTRY") -> Optional[str]:
+    def send_alert(self, trade: TradeTracking, current_price: float, alert_type: str = "ENTRY", buying_price: float = None) -> Optional[str]:
         """
         Send an alert for the given trade tracking row.
 
