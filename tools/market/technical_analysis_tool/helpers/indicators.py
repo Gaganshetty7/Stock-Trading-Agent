@@ -7,6 +7,7 @@
 # Used internally by tool.py — do not import directly in agents.
 # =========================================================
 
+import math
 from datetime import datetime, timezone, timedelta
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -15,6 +16,8 @@ from tools.market.technical_analysis_tool.helpers.settings import MA_PERIOD
 
 
 def calculate_rsi(data, period=14):
+    if len(data) < period + 1:
+        return None
     delta    = data["Close"].diff()
     gain     = delta.where(delta > 0, 0)
     loss     = -delta.where(delta < 0, 0)
@@ -22,7 +25,10 @@ def calculate_rsi(data, period=14):
     avg_loss = loss.rolling(period).mean()
     rs       = avg_gain / avg_loss
     rsi      = 100 - (100 / (1 + rs))
-    return float(rsi.iloc[-1])
+    val = float(rsi.iloc[-1])
+    if math.isnan(val):
+        return None
+    return val
 
 
 def process_stock(ticker, data, data_5m, data_15m, data_1d, ltp: float = None):
@@ -59,9 +65,12 @@ def process_stock(ticker, data, data_5m, data_15m, data_1d, ltp: float = None):
         L = float(last_block["Low"].min())
         C = last_traded_price
 
-        today_open     = float(data["Open"].iloc[0])
-        today_high     = float(data["High"].max())
-        today_low      = float(data["Low"].min())
+        last_date = data.index[-1].date()
+        today_data = data[data.index.date == last_date].copy()
+
+        today_open     = float(today_data["Open"].iloc[0])
+        today_high     = float(today_data["High"].max())
+        today_low      = float(today_data["Low"].min())
 
         now_date = datetime.now(IST).date()
         if data_1d.index[-1].date() == now_date:
@@ -90,38 +99,71 @@ def process_stock(ticker, data, data_5m, data_15m, data_1d, ltp: float = None):
         data_15m["MA20"] = data_15m["Close"].rolling(MA_PERIOD).mean()
         ma20_15m = float(data_15m["MA20"].iloc[-2])
 
-        # ----- VWAP -----
-        typical_price        = (data["High"] + data["Low"] + data["Close"]) / 3
-        cumulative_tp_volume = (typical_price * data["Volume"]).cumsum()
-        cumulative_volume    = data["Volume"].cumsum()
-        data["VWAP"]         = cumulative_tp_volume / cumulative_volume
-        vwap                 = float(data["VWAP"].iloc[-2])
+        # ----- VWAP & Volume Tracking -----
+        cumulative_volume    = today_data["Volume"].cumsum()
+        has_volume = not cumulative_volume.empty and float(cumulative_volume.iloc[-1]) > 0
+
+        if has_volume:
+            typical_price        = (today_data["High"] + today_data["Low"] + today_data["Close"]) / 3
+            cumulative_tp_volume = (typical_price * today_data["Volume"]).cumsum()
+            today_data["VWAP"]   = cumulative_tp_volume / cumulative_volume
+            if len(today_data) >= 2:
+                vwap = float(today_data["VWAP"].iloc[-2])
+            else:
+                vwap = float(today_data["VWAP"].iloc[-1])
+            if math.isnan(vwap):
+                vwap = None
+        else:
+            vwap = None
 
         # ----- RSI -----
         rsi_1m = calculate_rsi(data)
         rsi_5m = calculate_rsi(data_5m)
 
-        # ----- Volume -----
-        total_volume    = int(data["Volume"].sum())
-        last_volume     = int(data["Volume"].iloc[-2])
-        average_volume_20m  = float(data["Volume"].iloc[-21:-1].mean())
-        volume_strength_20m = (last_volume / average_volume_20m) if average_volume_20m != 0 else 0
+        # ----- Volume Analysis -----
+        if has_volume:
+            total_volume    = int(today_data["Volume"].sum())
+            last_volume     = int(data["Volume"].iloc[-2])
+            average_volume_20m  = float(data["Volume"].iloc[-21:-1].mean())
+            volume_strength_20m = (last_volume / average_volume_20m) if average_volume_20m != 0 else 0
+            volume_analysis = {
+                "today_total_volume"  : total_volume,
+                "last_candle_volume"  : last_volume,
+                "average_volume_20m"  : int(average_volume_20m),
+                "volume_strength_20m" : round(volume_strength_20m, 2)
+            }
+        else:
+            volume_analysis = None
 
         # ----- Trend & Relatives -----
-        above_vwap = last_traded_price > vwap
         above_ma20_1m = last_traded_price > ma20
         above_intraday_pivot_15m = last_traded_price > P
 
-        bullish_trend = above_vwap and above_ma20_1m and above_intraday_pivot_15m
-        bearish_trend = last_traded_price < P and last_traded_price < ma20 and last_traded_price < vwap
+        trend_reason = {
+            "above_ma20_1m": bool(above_ma20_1m),
+            "above_intraday_pivot_15m": bool(above_intraday_pivot_15m)
+        }
+
+        if vwap is not None:
+            above_vwap = last_traded_price > vwap
+            trend_reason["above_vwap"] = bool(above_vwap)
+            bullish_trend = above_vwap and above_ma20_1m and above_intraday_pivot_15m
+            bearish_trend = (last_traded_price < P) and (last_traded_price < ma20) and (last_traded_price < vwap)
+            price_vs_vwap_pct = round(((last_traded_price - vwap) / vwap) * 100, 2) if vwap != 0 else None
+            vwap_rounded = round(vwap, 2)
+        else:
+            bullish_trend = above_ma20_1m and above_intraday_pivot_15m
+            bearish_trend = (last_traded_price < P) and (last_traded_price < ma20)
+            price_vs_vwap_pct = None
+            vwap_rounded = None
+
         trend = "BULLISH" if bullish_trend else ("BEARISH" if bearish_trend else "SIDEWAYS")
 
-        price_vs_vwap_pct = ((last_traded_price - vwap) / vwap) * 100 if vwap != 0 else 0
-        price_vs_ma20_pct = ((last_traded_price - ma20) / ma20) * 100 if ma20 != 0 else 0
-        price_vs_intraday_pivot_pct = ((last_traded_price - P) / P) * 100 if P != 0 else 0
-        price_vs_previous_day_close_pct = ((last_traded_price - previous_day_close) / previous_day_close) * 100 if previous_day_close != 0 else 0
+        price_vs_ma20_pct = round(((last_traded_price - ma20) / ma20) * 100, 2) if ma20 != 0 else None
+        price_vs_intraday_pivot_pct = round(((last_traded_price - P) / P) * 100, 2) if P != 0 else None
+        price_vs_previous_day_close_pct = round(((last_traded_price - previous_day_close) / previous_day_close) * 100, 2) if previous_day_close != 0 else None
 
-        return {
+        payload = {
             "stock"     : ticker,
             "timestamp" : datetime.now(IST).isoformat(),
             "status"    : "ok",
@@ -136,29 +178,19 @@ def process_stock(ticker, data, data_5m, data_15m, data_1d, ltp: float = None):
             "technical_indicators": {
                 "pivot_15m"                       : round(P, 2),
                 "pivot_source"                    : "last_15_1m_candles",
-                "VWAP"                            : round(vwap, 2),
-                "RSI_1m"                          : round(rsi_1m, 2),
-                "RSI_5m"                          : round(rsi_5m, 2),
+                "VWAP"                            : vwap_rounded,
+                "RSI_1m"                          : round(rsi_1m, 2) if rsi_1m is not None else None,
+                "RSI_5m"                          : round(rsi_5m, 2) if rsi_5m is not None else None,
                 "trend"                           : trend,
-                "trend_reason": {
-                    "above_vwap"               : bool(above_vwap),
-                    "above_ma20_1m"            : bool(above_ma20_1m),
-                    "above_intraday_pivot_15m" : bool(above_intraday_pivot_15m)
-                },
-                "price_vs_vwap_pct"               : round(price_vs_vwap_pct, 2),
-                "price_vs_ma20_pct"               : round(price_vs_ma20_pct, 2),
-                "price_vs_intraday_pivot_pct"     : round(price_vs_intraday_pivot_pct, 2),
-                "price_vs_previous_day_close_pct" : round(price_vs_previous_day_close_pct, 2)
+                "trend_reason"                    : trend_reason,
+                "price_vs_vwap_pct"               : price_vs_vwap_pct,
+                "price_vs_ma20_pct"               : price_vs_ma20_pct,
+                "price_vs_intraday_pivot_pct"     : price_vs_intraday_pivot_pct,
+                "price_vs_previous_day_close_pct" : price_vs_previous_day_close_pct
             },
             "support_resistance": {
                 "R1": round(R1, 2), "R2": round(R2, 2), "R3": round(R3, 2),
                 "S1": round(S1, 2), "S2": round(S2, 2), "S3": round(S3, 2)
-            },
-            "volume_analysis": {
-                "today_total_volume"  : total_volume,
-                "last_candle_volume"  : last_volume,
-                "average_volume_20m"  : int(average_volume_20m),
-                "volume_strength_20m" : round(volume_strength_20m, 2)
             },
             "ma_timeframes": {
                 "MA20_1m" : round(ma20, 2),
@@ -166,6 +198,12 @@ def process_stock(ticker, data, data_5m, data_15m, data_1d, ltp: float = None):
                 "MA20_15m": round(ma20_15m, 2)
             }
         }
+
+        if volume_analysis is not None:
+            payload["volume_analysis"] = volume_analysis
+
+        return payload
+
 
     except Exception as e:
         return {

@@ -2,6 +2,15 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
 
+from enum import Enum
+
+class TrackingStatus(str, Enum):
+    TRACKING = "TRACKING"
+    ACTIVE = "ACTIVE"
+    EXPIRED = "EXPIRED"
+    STOPLOSS_HIT = "STOPLOSS_HIT"
+    TARGET_HIT = "TARGET_HIT"
+
 @dataclass
 class BuyZone:
     min: float
@@ -39,7 +48,7 @@ class TrackingObject:
 
     # Tracking state
     tracking_started_at: datetime = field(default_factory=datetime.now)
-    status: str = "TRACKING"   # TRACKING | ALERTED | EXPIRED
+    status: TrackingStatus = TrackingStatus.TRACKING
     alert_sent: bool = False
 
     def elapsed_minutes(self) -> float:

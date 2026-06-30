@@ -26,6 +26,60 @@ with open(skill_path, "r", encoding="utf-8") as f:
     TRADE_BRAIN_SYSTEM_PROMPT = f.read()
 
 
+from db.database import SessionLocal
+from db.repositories.trade_tracking.trade_tracking_repo import TradeTrackingRepository
+from db.repositories.trade_tracking.trade_tracking_txn_repo import TradeTrackingTxnRepository
+from db.models.trade_tracking import TradeEventType, TrackingStatus
+from datetime import datetime
+import pytz
+
+def get_ist_now():
+    return datetime.now(pytz.timezone('Asia/Kolkata'))
+
+def _push_plan_to_db(plan: TradePlan, raw_plan_dict: dict, run_batch: str) -> None:
+    """Push an actionable TradePlan to PostgreSQL."""
+    ACTIONABLE_DECISIONS = {"BUY_NOW", "BUY_ON_CONFIRMATION", "HIGH_RISK_SPECULATIVE"}
+    if plan.decision not in ACTIONABLE_DECISIONS:
+        logger.info(f"Skipping DB insert for {plan.symbol} due to non-actionable decision: {plan.decision}")
+        return
+
+    plan_data = {
+        "symbol": plan.symbol,
+        "decision": plan.decision,
+        "confidence": plan.confidence,
+        "entry_type": plan.entry_plan.entry_type,
+        "trade_thesis": plan.trade_thesis,
+        "confirmation_conditions": plan.entry_plan.confirmation_conditions,
+        "post_entry_watchouts": plan.post_entry_watchouts,
+        "original_plan_json": raw_plan_dict,
+        "buy_zone_min": plan.entry_plan.buy_zone.min,
+        "buy_zone_max": plan.entry_plan.buy_zone.max,
+        "hard_stoploss": plan.stoploss_plan.hard_stoploss,
+        "target_1": plan.target_plan.target_1,
+        "target_2": plan.target_plan.target_2,
+        "target_3": plan.target_plan.target_3,
+        "run_batch": run_batch,
+    }
+
+    tracking_repo = TradeTrackingRepository()
+    txn_repo = TradeTrackingTxnRepository()
+
+    try:
+        with SessionLocal() as db:
+            trade = tracking_repo.create(db, plan_data)
+            txn_repo.create(
+                db=db,
+                trade_id=trade.id,
+                event_type=TradeEventType.TRADE_CREATED,
+                new_status=TrackingStatus.TRACKING,
+                details=raw_plan_dict,
+                message=f"AI Trade Plan created with decision: {plan.decision}"
+            )
+            db.commit()
+            logger.info(f"Successfully pushed plan for {plan.symbol} to DB (Trade ID: {trade.id})")
+    except Exception as e:
+        logger.error(f"Failed to push plan for {plan.symbol} to DB: {e}")
+
 async def execute_trade_brain_pipeline(market_context: Dict, technical_data: Dict) -> str:
     """
     Iterates through technical data, invoking the LLM with strict TradePlan
@@ -41,6 +95,7 @@ async def execute_trade_brain_pipeline(market_context: Dict, technical_data: Dic
 
     final_results = {}
     max_retries = TRADE_STRATEGY_MAX_RETRIES
+    run_batch = get_ist_now().strftime("%d:%m:%Y-%I:%M %p")
 
     for ticker, data in technical_data.items():
         logger.info(f"Processing ticker: {ticker}")
@@ -61,6 +116,7 @@ async def execute_trade_brain_pipeline(market_context: Dict, technical_data: Dic
                 plan: TradePlan = await structured_llm.ainvoke(messages)
                 plan_dict = plan.model_dump()
                 logger.info(f"Successfully generated plan for {ticker}")
+                _push_plan_to_db(plan, plan_dict, run_batch)
                 break
             except Exception as e:
                 if attempt < max_retries:

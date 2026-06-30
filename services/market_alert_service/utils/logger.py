@@ -4,7 +4,8 @@ from datetime import datetime
 
 
 def setup_logger() -> logging.Logger:
-    os.makedirs("logs", exist_ok=True)
+    log_dir = "logs/services/market_alert_service"
+    os.makedirs(log_dir, exist_ok=True)
 
     root = logging.getLogger()
     # Capture everything at DEBUG level in the root
@@ -23,7 +24,7 @@ def setup_logger() -> logging.Logger:
 
     # ── Full service file log (DEBUG and above) ──────────────────────────────
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = f"logs/market_alert_{timestamp}.log"
+    log_file = f"{log_dir}/market_alert_{timestamp}.log"
     file_fh = logging.FileHandler(log_file)
     file_fh.setFormatter(fmt)
     file_fh.setLevel(logging.DEBUG)
