@@ -26,6 +26,7 @@ class TradeTrackingRepository:
             target_1=plan_data.get('target_1'),
             target_2=plan_data.get('target_2'),
             target_3=plan_data.get('target_3'),
+            run_batch=plan_data.get('run_batch'),
             status=TrackingStatus.TRACKING
         )
         db.add(trade)

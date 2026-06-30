@@ -30,8 +30,13 @@ from db.database import SessionLocal
 from db.repositories.trade_tracking.trade_tracking_repo import TradeTrackingRepository
 from db.repositories.trade_tracking.trade_tracking_txn_repo import TradeTrackingTxnRepository
 from db.models.trade_tracking import TradeEventType, TrackingStatus
+from datetime import datetime
+import pytz
 
-def _push_plan_to_db(plan: TradePlan, raw_plan_dict: dict) -> None:
+def get_ist_now():
+    return datetime.now(pytz.timezone('Asia/Kolkata'))
+
+def _push_plan_to_db(plan: TradePlan, raw_plan_dict: dict, run_batch: str) -> None:
     """Push an actionable TradePlan to PostgreSQL."""
     ACTIONABLE_DECISIONS = {"BUY_NOW", "BUY_ON_CONFIRMATION", "HIGH_RISK_SPECULATIVE"}
     if plan.decision not in ACTIONABLE_DECISIONS:
@@ -53,6 +58,7 @@ def _push_plan_to_db(plan: TradePlan, raw_plan_dict: dict) -> None:
         "target_1": plan.target_plan.target_1,
         "target_2": plan.target_plan.target_2,
         "target_3": plan.target_plan.target_3,
+        "run_batch": run_batch,
     }
 
     tracking_repo = TradeTrackingRepository()
@@ -89,6 +95,7 @@ async def execute_trade_brain_pipeline(market_context: Dict, technical_data: Dic
 
     final_results = {}
     max_retries = TRADE_STRATEGY_MAX_RETRIES
+    run_batch = get_ist_now().strftime("%d:%m:%Y-%I:%M %p")
 
     for ticker, data in technical_data.items():
         logger.info(f"Processing ticker: {ticker}")
@@ -109,7 +116,7 @@ async def execute_trade_brain_pipeline(market_context: Dict, technical_data: Dic
                 plan: TradePlan = await structured_llm.ainvoke(messages)
                 plan_dict = plan.model_dump()
                 logger.info(f"Successfully generated plan for {ticker}")
-                _push_plan_to_db(plan, plan_dict)
+                _push_plan_to_db(plan, plan_dict, run_batch)
                 break
             except Exception as e:
                 if attempt < max_retries:
